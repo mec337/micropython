@@ -37,6 +37,9 @@ typedef struct {
     bool ext0_level : 1;
     wake_type_t ext0_wake_types;
     bool ext1_level : 1;
+    bool ls_wake_on_gpio : 1;
+    int8_t uart_num;
+    bool wake_on_ulp : 1;
 } machine_rtc_config_t;
 
 extern machine_rtc_config_t machine_rtc_config;

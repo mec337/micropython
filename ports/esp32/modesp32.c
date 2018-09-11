@@ -42,12 +42,29 @@
 #include "machine_rtc.h"
 #include "modesp32.h"
 
+STATIC mp_obj_t esp32_lightsleep_wake_on_gpio(const mp_obj_t wake) {
+
+    if (machine_rtc_config.wake_on_touch != 0 || machine_rtc_config.wake_on_ulp != 0) {
+        mp_raise_ValueError("no resources");
+    }
+
+    machine_rtc_config.ls_wake_on_gpio = mp_obj_is_true(wake);
+    return mp_const_none;
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_1(esp32_lightsleep_wake_on_gpio_obj, esp32_lightsleep_wake_on_gpio);
+
+STATIC mp_obj_t esp32_lightsleep_wake_on_uart(const mp_obj_t uart_num_in) {
+    machine_rtc_config.uart_num = mp_obj_get_int(uart_num_in);
+    return mp_const_none;
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_1(esp32_lightsleep_wake_on_uart_obj, esp32_lightsleep_wake_on_uart);
+
 STATIC mp_obj_t esp32_wake_on_touch(const mp_obj_t wake) {
 
     if (machine_rtc_config.ext0_pin != -1) {
         mp_raise_ValueError("no resources");
     }
-     //nlr_raise(mp_obj_new_exception_msg(&mp_type_RuntimeError, "touchpad wakeup not available for this version of ESP-IDF"));
+    //nlr_raise(mp_obj_new_exception_msg(&mp_type_RuntimeError, "touchpad wakeup not available for this version of ESP-IDF"));
 
     machine_rtc_config.wake_on_touch = mp_obj_is_true(wake);
     return mp_const_none;
@@ -141,6 +158,8 @@ STATIC MP_DEFINE_CONST_FUN_OBJ_0(esp32_raw_temperature_obj, esp32_raw_temperatur
 STATIC const mp_rom_map_elem_t esp32_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_esp32) },
 
+    { MP_ROM_QSTR(MP_QSTR_wake_on_touch), MP_ROM_PTR(&esp32_lightsleep_wake_on_gpio_obj) },
+    { MP_ROM_QSTR(MP_QSTR_wake_on_touch), MP_ROM_PTR(&esp32_lightsleep_wake_on_uart_obj) },
     { MP_ROM_QSTR(MP_QSTR_wake_on_touch), MP_ROM_PTR(&esp32_wake_on_touch_obj) },
     { MP_ROM_QSTR(MP_QSTR_wake_on_ext0), MP_ROM_PTR(&esp32_wake_on_ext0_obj) },
     { MP_ROM_QSTR(MP_QSTR_wake_on_ext1), MP_ROM_PTR(&esp32_wake_on_ext1_obj) },

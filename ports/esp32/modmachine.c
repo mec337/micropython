@@ -96,6 +96,24 @@ STATIC mp_obj_t machine_sleep_helper(wake_type_t wake_type, size_t n_args, const
         esp_sleep_enable_ext0_wakeup(machine_rtc_config.ext0_pin, machine_rtc_config.ext0_level ? 1 : 0);
     }
 
+    // light sleep only wakeup
+    // TODO: not yet work on current IDF version 30545f4cccec7460634b656d278782dd7151098e, but work on upstream IDF 30545f4cccec7460634b656d278782dd7151098e
+    // if (wake_type == MACHINE_WAKE_SLEEP) {
+    //     if (machine_rtc_config.ls_wake_on_gpio) {
+    //         if (machine_rtc_config.ext1_pins != 0 || machine_rtc_config.wake_on_touch) {
+    //             nlr_raise(mp_obj_new_exception_msg(&mp_type_RuntimeError, "gpio wakeup can not be used with touch pad or ext1 wakeup"));
+    //         } else if (esp_sleep_enable_gpio_wakeup() != ESP_OK) {
+    //             nlr_raise(mp_obj_new_exception_msg(&mp_type_RuntimeError, "esp_sleep_enable_gpio_wakeup() failed"));
+    //         }
+    //     }
+
+    //     if (machine_rtc_config.uart_num != -1) {
+    //         if (esp_sleep_enable_uart_wakeup(machine_rtc_config.uart_num) != ESP_OK) {
+    //             nlr_raise(mp_obj_new_exception_msg(&mp_type_RuntimeError, "esp_sleep_enable_uart_wakeup() failed"));
+    //         }
+    //     }
+    // }
+
     if (machine_rtc_config.ext1_pins != 0) {
         esp_sleep_enable_ext1_wakeup(
             machine_rtc_config.ext1_pins,
