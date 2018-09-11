@@ -40,7 +40,7 @@ typedef struct {
     bool ls_wake_on_gpio : 1; // lightsleep
     int8_t ls_uart_num; // lightsleep
     bool wake_on_ulp : 1;
-    bool power_down_rtc_periph; // power down rtc periph during sleep
+    bool rtc_periph_force_on; // force power on rtc peripheral during sleep
 } machine_rtc_config_t;
 
 extern machine_rtc_config_t machine_rtc_config;
