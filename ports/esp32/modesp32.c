@@ -42,12 +42,38 @@
 #include "machine_rtc.h"
 #include "modesp32.h"
 
-STATIC mp_obj_t esp32_wake_on_touch(const mp_obj_t wake) {
+STATIC mp_obj_t esp32_lightsleep_wake_on_gpio(const mp_obj_t wake) {
 
-    if (machine_rtc_config.ext0_pin != -1) {
+    if (machine_rtc_config.wake_on_touch || machine_rtc_config.wake_on_ulp) {
         mp_raise_ValueError("no resources");
     }
-     //nlr_raise(mp_obj_new_exception_msg(&mp_type_RuntimeError, "touchpad wakeup not available for this version of ESP-IDF"));
+
+    machine_rtc_config.ls_wake_on_gpio = mp_obj_is_true(wake);
+    return mp_const_none;
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_1(esp32_lightsleep_wake_on_gpio_obj, esp32_lightsleep_wake_on_gpio);
+
+STATIC mp_obj_t esp32_lightsleep_wake_on_uart(const mp_obj_t ls_uart_num_in) {
+    machine_rtc_config.ls_uart_num = mp_obj_get_int(ls_uart_num_in);
+    return mp_const_none;
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_1(esp32_lightsleep_wake_on_uart_obj, esp32_lightsleep_wake_on_uart);
+
+STATIC mp_obj_t esp32_wake_on_ulp(const mp_obj_t wake) {
+    if (machine_rtc_config.rtc_periph_force_on) {
+        mp_raise_ValueError("no resources");
+    }
+    machine_rtc_config.wake_on_ulp = mp_obj_is_true(wake);
+    return mp_const_none;
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_1(esp32_wake_on_ulp_obj, esp32_wake_on_ulp);
+
+STATIC mp_obj_t esp32_wake_on_touch(const mp_obj_t wake) {
+
+    if (machine_rtc_config.ext0_pin != -1 || machine_rtc_config.ls_wake_on_gpio) {
+        mp_raise_ValueError("no resources");
+    }
+    //nlr_raise(mp_obj_new_exception_msg(&mp_type_RuntimeError, "touchpad wakeup not available for this version of ESP-IDF"));
 
     machine_rtc_config.wake_on_touch = mp_obj_is_true(wake);
     return mp_const_none;
@@ -115,6 +141,9 @@ STATIC mp_obj_t esp32_wake_on_ext1(size_t n_args, const mp_obj_t *pos_args, mp_m
         }
     }
 
+    if (machine_rtc_config.ext1_pins !=0 && machine_rtc_config.ls_wake_on_gpio) {
+        mp_raise_ValueError("no resources");
+    }
     machine_rtc_config.ext1_level = args[ARG_level].u_bool;
     machine_rtc_config.ext1_pins = ext1_pins;
 
@@ -138,13 +167,40 @@ STATIC mp_obj_t esp32_raw_temperature(void) {
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_0(esp32_raw_temperature_obj, esp32_raw_temperature);
 
+STATIC mp_obj_t esp32_sleep_pd_config(const mp_obj_t domain_in, const mp_obj_t option_in) {
+    esp_sleep_pd_domain_t domain = mp_obj_get_int(domain_in);
+    esp_sleep_pd_option_t option = mp_obj_get_int(option_in);
+
+    if (domain == ESP_PD_DOMAIN_RTC_PERIPH && 
+        option == ESP_PD_OPTION_ON &&
+        machine_rtc_config.wake_on_ulp) {
+            mp_raise_ValueError("no resources");
+        }
+
+    if (esp_sleep_pd_config(domain, option) != ESP_OK) {
+        mp_raise_ValueError("invalid arugment");
+    }
+
+    if (domain == ESP_PD_DOMAIN_RTC_PERIPH) {
+        machine_rtc_config.rtc_periph_force_on = (option == ESP_PD_OPTION_ON);
+    }
+    return mp_const_none;
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_2(esp32_sleep_pd_config_obj, esp32_sleep_pd_config);
+
 STATIC const mp_rom_map_elem_t esp32_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_esp32) },
 
+    { MP_ROM_QSTR(MP_QSTR_wake_on_touch), MP_ROM_PTR(&esp32_lightsleep_wake_on_gpio_obj) },
+    { MP_ROM_QSTR(MP_QSTR_wake_on_touch), MP_ROM_PTR(&esp32_lightsleep_wake_on_uart_obj) },
     { MP_ROM_QSTR(MP_QSTR_wake_on_touch), MP_ROM_PTR(&esp32_wake_on_touch_obj) },
     { MP_ROM_QSTR(MP_QSTR_wake_on_ext0), MP_ROM_PTR(&esp32_wake_on_ext0_obj) },
     { MP_ROM_QSTR(MP_QSTR_wake_on_ext1), MP_ROM_PTR(&esp32_wake_on_ext1_obj) },
+    { MP_ROM_QSTR(MP_QSTR_wake_on_ulp), MP_ROM_PTR(&esp32_wake_on_ulp_obj) },
+    { MP_ROM_QSTR(MP_QSTR_lightsleep_wake_on_gpio), MP_ROM_PTR(&esp32_lightsleep_wake_on_gpio_obj) },
+    { MP_ROM_QSTR(MP_QSTR_lightsleep_wake_on_uart), MP_ROM_PTR(&esp32_lightsleep_wake_on_uart_obj) },
     { MP_ROM_QSTR(MP_QSTR_raw_temperature), MP_ROM_PTR(&esp32_raw_temperature_obj) },
+    { MP_ROM_QSTR(MP_QSTR_sleep_pd_config), MP_ROM_PTR(&esp32_sleep_pd_config_obj) },
 
     { MP_ROM_QSTR(MP_QSTR_ULP), MP_ROM_PTR(&esp32_ulp_type) },
 

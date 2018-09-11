@@ -37,6 +37,10 @@ typedef struct {
     bool ext0_level : 1;
     wake_type_t ext0_wake_types;
     bool ext1_level : 1;
+    bool ls_wake_on_gpio : 1; // lightsleep
+    int8_t ls_uart_num; // lightsleep
+    bool wake_on_ulp : 1;
+    bool rtc_periph_force_on; // force power on rtc peripheral during sleep
 } machine_rtc_config_t;
 
 extern machine_rtc_config_t machine_rtc_config;
