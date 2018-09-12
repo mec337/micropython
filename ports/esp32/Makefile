@@ -679,6 +679,11 @@ APP_LD_ARGS += -L$(ESPCOMP)/esp32/lib -lcore -lmesh -lnet80211 -lphy -lrtc -lpp 
 APP_LD_ARGS += $(OBJ)
 APP_LD_ARGS += --end-group
 
+APP_OBJ = $(addprefix $(BUILD)/bootloader/$(ESPCOMP)/,\
+	soc/esp32/rtc_clk_init.o \
+	soc/esp32/rtc_wdt.o \
+	)
+
 $(BUILD)/esp32_out.ld: sdkconfig.h
 	$(Q)$(CC) -I. -C -P -x c -E $(ESPCOMP)/esp32/ld/esp32.ld -o $@
 
@@ -688,7 +693,7 @@ $(BUILD)/application.bin: $(BUILD)/application.elf
 
 $(BUILD)/application.elf: $(OBJ) $(BUILD)/esp32_out.ld
 	$(ECHO) "LINK $@"
-	$(Q)$(LD) $(LDFLAGS) -o $@ $(APP_LD_ARGS)
+	$(Q)$(LD) $(LDFLAGS) -o $@ $(APP_LD_ARGS) $(APP_OBJ)
 	$(Q)$(SIZE) $@
 
 define compile_cxx
@@ -767,6 +772,8 @@ $(BOOTLOADER_LIB_DIR)/libmicro-ecc.a: $(BOOTLOADER_LIB_MICRO_ECC_OBJ)
 # remaining object files
 BOOTLOADER_OBJ = $(addprefix $(BUILD)/bootloader/$(ESPCOMP)/,\
 	soc/esp32/rtc_clk.o \
+	soc/esp32/rtc_clk_init.o \
+	soc/esp32/rtc_wdt.o \
 	soc/esp32/rtc_time.o \
 	soc/esp32/cpu_util.o \
 	bootloader/subproject/main/bootloader_start.o \
