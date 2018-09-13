@@ -34,8 +34,15 @@
 #include "freertos/task.h"
 #include "rom/ets_sys.h"
 #include "rom/rtc.h"
+#include "soc/rtc.h"
 #include "esp_system.h"
 #include "driver/touch_pad.h"
+#include "driver/uart.h"
+#include "esp32/pm.h"
+#include "esp_log.h"
+
+#include "soc/rtc_cntl_reg.h"
+#include "soc/apb_ctrl_reg.h"
 
 #include "py/obj.h"
 #include "py/runtime.h"
@@ -57,21 +64,58 @@ typedef enum {
     MP_SOFT_RESET
 } reset_reason_t;
 
+#define DIG_DBIAS_2M        RTC_CNTL_DBIAS_1V00
+#define DIG_DBIAS_XTAL      RTC_CNTL_DBIAS_1V10
+#define MHZ 1000000
+
+static void rtc_clk_bbpll_disable()
+{
+    SET_PERI_REG_MASK(RTC_CNTL_OPTIONS0_REG,
+            RTC_CNTL_BB_I2C_FORCE_PD | RTC_CNTL_BBPLL_FORCE_PD |
+            RTC_CNTL_BBPLL_I2C_FORCE_PD);
+
+    /* is APLL under force power down? */
+    uint32_t apll_fpd = REG_GET_FIELD(RTC_CNTL_ANA_CONF_REG, RTC_CNTL_PLLA_FORCE_PD);
+    if (apll_fpd) {
+        /* then also power down the internal I2C bus */
+        SET_PERI_REG_MASK(RTC_CNTL_OPTIONS0_REG, RTC_CNTL_BIAS_I2C_FORCE_PD);
+    }
+}
+
+void cpu_freq_set(const rtc_cpu_freq_config_t* config) {
+
+}
+
+
 STATIC mp_obj_t machine_freq(size_t n_args, const mp_obj_t *args) {
     if (n_args == 0) {
         // get
-        return mp_obj_new_int(ets_get_cpu_frequency() * 1000000);
+        
+
+        return mp_obj_new_int(rtc_clk_cpu_freq_value(rtc_clk_cpu_freq_get()));
     } else {
-        // set
-        mp_int_t freq = mp_obj_get_int(args[0]) / 1000000;
-        if (freq != 80 && freq != 160 && freq != 240) {
-            mp_raise_ValueError("frequency can only be either 80Mhz, 160MHz or 240MHz");
+        // set CPU frequency
+        int freq_mhz = mp_obj_get_int(args[0]);
+        int xtal_freq_mhz = rtc_clk_xtal_freq_get();
+        rtc_cpu_freq_t freq_sel;
+        if (rtc_clk_cpu_freq_from_mhz(freq_mhz, &freq_sel)) {
+
+            rtc_cpu_freq_config_t config;
+            rtc_clk_cpu_freq_to_config(freq_sel, &config);
+            // temporary work around for IDF bug (https://github.com/espressif/esp-idf/pull/2404)
+            if (freq_sel == RTC_CPU_FREQ_2M) {
+                config.div = rtc_clk_xtal_freq_get() / 2;
+            }
+            rtc_clk_cpu_freq_set_config(&config);
+        } else {
+            ESP_LOGI("freq", "Available frequencies: 2MHz, 80Mhz, 160MHz, 240MHz or %uMHz (XTAL)", rtc_clk_xtal_freq_get());
         }
-        /*
-        system_update_cpu_freq(freq);
-        */
+
+        
+        uart_set_baudrate(UART_NUM_0, CONFIG_CONSOLE_UART_BAUDRATE);
         return mp_const_none;
     }
+    return mp_const_none;
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(machine_freq_obj, 0, 1, machine_freq);
 
