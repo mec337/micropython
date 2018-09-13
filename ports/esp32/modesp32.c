@@ -32,6 +32,7 @@
 #include "soc/rtc_cntl_reg.h"
 #include "soc/sens_reg.h"
 #include "driver/gpio.h"
+#include "esp_wifi.h"
 
 #include "py/nlr.h"
 #include "py/obj.h"
@@ -188,6 +189,21 @@ STATIC mp_obj_t esp32_sleep_pd_config(const mp_obj_t domain_in, const mp_obj_t o
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_2(esp32_sleep_pd_config_obj, esp32_sleep_pd_config);
 
+// wifi_power_save([value])
+STATIC mp_obj_t esp32_wifi_power_save(size_t n_args, const mp_obj_t *args) {
+    if (n_args == 0) {
+        // get
+        wifi_ps_type_t type;
+        esp_wifi_get_ps(&type);
+        return (mp_obj_new_int(type) == 1) ? mp_const_true_obj : mp_const_false_obj;
+    } else {
+        // set
+        esp_wifi_set_ps(mp_obj_get_int(args[0]));
+    }
+    return mp_const_none;
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(esp32_wifi_power_save_obj, 0, 1, esp32_wifi_power_save);
+
 STATIC const mp_rom_map_elem_t esp32_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_esp32) },
 
@@ -201,11 +217,15 @@ STATIC const mp_rom_map_elem_t esp32_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_lightsleep_wake_on_uart), MP_ROM_PTR(&esp32_lightsleep_wake_on_uart_obj) },
     { MP_ROM_QSTR(MP_QSTR_raw_temperature), MP_ROM_PTR(&esp32_raw_temperature_obj) },
     { MP_ROM_QSTR(MP_QSTR_sleep_pd_config), MP_ROM_PTR(&esp32_sleep_pd_config_obj) },
+    { MP_ROM_QSTR(MP_QSTR_wifi_power_save), MP_ROM_PTR(&esp32_wifi_power_save_obj) },
 
     { MP_ROM_QSTR(MP_QSTR_ULP), MP_ROM_PTR(&esp32_ulp_type) },
 
     { MP_ROM_QSTR(MP_QSTR_WAKEUP_ALL_LOW), MP_ROM_PTR(&mp_const_false_obj) },
     { MP_ROM_QSTR(MP_QSTR_WAKEUP_ANY_HIGH), MP_ROM_PTR(&mp_const_true_obj) },
+    { MP_ROM_QSTR(MP_QSTR_WIFI_PS_NONE), MP_ROM_INT(WIFI_PS_NONE) },
+    { MP_ROM_QSTR(MP_QSTR_WIFI_PS_MIN_MODEM), MP_ROM_INT(WIFI_PS_MIN_MODEM) },
+    { MP_ROM_QSTR(MP_QSTR_WIFI_PS_MAX_MODEM), MP_ROM_INT(WIFI_PS_MAX_MODEM) },
 };
 
 STATIC MP_DEFINE_CONST_DICT(esp32_module_globals, esp32_module_globals_table);
