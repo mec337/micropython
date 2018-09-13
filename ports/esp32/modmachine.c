@@ -68,49 +68,26 @@ typedef enum {
 #define DIG_DBIAS_XTAL      RTC_CNTL_DBIAS_1V10
 #define MHZ 1000000
 
-static void rtc_clk_bbpll_disable()
-{
-    SET_PERI_REG_MASK(RTC_CNTL_OPTIONS0_REG,
-            RTC_CNTL_BB_I2C_FORCE_PD | RTC_CNTL_BBPLL_FORCE_PD |
-            RTC_CNTL_BBPLL_I2C_FORCE_PD);
-
-    /* is APLL under force power down? */
-    uint32_t apll_fpd = REG_GET_FIELD(RTC_CNTL_ANA_CONF_REG, RTC_CNTL_PLLA_FORCE_PD);
-    if (apll_fpd) {
-        /* then also power down the internal I2C bus */
-        SET_PERI_REG_MASK(RTC_CNTL_OPTIONS0_REG, RTC_CNTL_BIAS_I2C_FORCE_PD);
-    }
-}
-
-void cpu_freq_set(const rtc_cpu_freq_config_t* config) {
-
-}
-
-
 STATIC mp_obj_t machine_freq(size_t n_args, const mp_obj_t *args) {
+    rtc_cpu_freq_config_t config;
     if (n_args == 0) {
         // get
-        
-
-        return mp_obj_new_int(rtc_clk_cpu_freq_value(rtc_clk_cpu_freq_get()));
+        rtc_clk_cpu_freq_get_config(&config);
+        return mp_obj_new_int(config.freq_mhz);
     } else {
-        // set CPU frequency
+        // set
         int freq_mhz = mp_obj_get_int(args[0]);
-        int xtal_freq_mhz = rtc_clk_xtal_freq_get();
-        rtc_cpu_freq_t freq_sel;
-        if (rtc_clk_cpu_freq_from_mhz(freq_mhz, &freq_sel)) {
-
-            rtc_cpu_freq_config_t config;
-            rtc_clk_cpu_freq_to_config(freq_sel, &config);
+        if (rtc_clk_cpu_freq_mhz_to_config(freq_mhz, &config)) {
             // temporary work around for IDF bug (https://github.com/espressif/esp-idf/pull/2404)
-            if (freq_sel == RTC_CPU_FREQ_2M) {
+            if (config.freq_mhz == 2) {
                 config.div = rtc_clk_xtal_freq_get() / 2;
             }
+
+            ESP_LOGI("cpu", "source: %u  div: %u", config.source, config.div);
             rtc_clk_cpu_freq_set_config(&config);
         } else {
-            ESP_LOGI("freq", "Available frequencies: 2MHz, 80Mhz, 160MHz, 240MHz or %uMHz (XTAL)", rtc_clk_xtal_freq_get());
+            mp_raise_ValueError("Available Frequencies(MHz): 1,2,4,8,10,20,40,80,160,240");
         }
-
         
         uart_set_baudrate(UART_NUM_0, CONFIG_CONSOLE_UART_BAUDRATE);
         return mp_const_none;
