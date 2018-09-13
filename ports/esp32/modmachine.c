@@ -83,7 +83,7 @@ STATIC mp_obj_t machine_freq(size_t n_args, const mp_obj_t *args) {
                 config.div = rtc_clk_xtal_freq_get() / 2;
             }
 
-            ESP_LOGI("cpu", "source: %u  div: %u", config.source, config.div);
+            // ESP_LOGI("cpu", "source: %u  div: %u", config.source, config.div);
             rtc_clk_cpu_freq_set_config(&config);
         } else {
             mp_raise_ValueError("Available Frequencies(MHz): 1,2,4,8,10,20,40,80,160,240");
