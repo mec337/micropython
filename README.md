@@ -1,4 +1,4 @@
-The MicroPython Edge Fork
+MicroPython Edge
 =======================
 This fork is created for [The MicroPython Project](https://github.com/micropython/micropython) has always been reluctant to introduce vendor specific features due to corcerns such as consistency across platforms.
 
