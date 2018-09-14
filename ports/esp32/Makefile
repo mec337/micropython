@@ -3,6 +3,8 @@ include ../../py/mkenv.mk
 # qstr definitions (must come before including py.mk)
 QSTR_DEFS = qstrdefsport.h
 
+CONFIG_SPIRAM_SUPPORT = 0
+
 MICROPY_PY_USSL = 0
 MICROPY_SSL_AXTLS = 0
 MICROPY_FATFS = 1
@@ -21,7 +23,7 @@ FLASH_FREQ ?= 40m
 FLASH_SIZE ?= 4MB
 CROSS_COMPILE ?= xtensa-esp32-elf-
 
-ESPIDF_SUPHASH := 30545f4cccec7460634b656d278782dd7151098e
+ESPIDF_SUPHASH := 3a19fb7e8a4182fe8681957e48e0f4235cdcafeb
 
 # paths to ESP IDF and its components
 ifeq ($(ESPIDF),)
@@ -79,6 +81,11 @@ INC_ESPCOMP += -I$(ESPCOMP)/newlib/include
 INC_ESPCOMP += -I$(ESPCOMP)/nvs_flash/include
 INC_ESPCOMP += -I$(ESPCOMP)/freertos/include
 INC_ESPCOMP += -I$(ESPCOMP)/tcpip_adapter/include
+
+INC_ESPCOMP += -I$(ESPCOMP)/lwip/lwip/src/include
+INC_ESPCOMP += -I$(ESPCOMP)/lwip/port/esp32/include
+INC_ESPCOMP += -I$(ESPCOMP)/lwip/include/apps
+
 INC_ESPCOMP += -I$(ESPCOMP)/lwip/include/lwip
 INC_ESPCOMP += -I$(ESPCOMP)/lwip/include/lwip/port
 INC_ESPCOMP += -I$(ESPCOMP)/lwip/include/lwip/posix
@@ -451,59 +458,58 @@ ESPIDF_ULP_O = $(addprefix $(ESPCOMP)/ulp/,\
 
 $(BUILD)/$(ESPCOMP)/lwip/%.o: CFLAGS += -Wno-address -Wno-unused-variable -Wno-unused-but-set-variable
 ESPIDF_LWIP_O = $(addprefix $(ESPCOMP)/lwip/,\
-	api/pppapi.o \
-	api/netbuf.o \
-	api/api_lib.o \
-	api/netifapi.o \
-	api/tcpip.o \
-	api/netdb.o \
-	api/err.o \
-	api/api_msg.o \
-	api/sockets.o \
-	apps/sntp/sntp.o \
-	apps/dhcpserver.o \
-	core/ipv4/ip_frag.o \
-	core/ipv4/dhcp.o \
-	core/ipv4/ip4_addr.o \
-	core/ipv4/igmp.o \
-	core/ipv4/ip4.o \
-	core/ipv4/autoip.o \
-	core/ipv4/icmp.o \
-	core/ipv6/ip6_frag.o \
-	core/ipv6/dhcp6.o \
-	core/ipv6/inet6.o \
-	core/ipv6/ip6_addr.o \
-	core/ipv6/ip6.o \
-	core/ipv6/nd6.o \
-	core/ipv6/mld6.o \
-	core/ipv6/ethip6.o \
-	core/ipv6/icmp6.o \
-	core/mem.o \
-	core/init.o \
-	core/memp.o \
-	core/sys.o \
-	core/tcp_in.o \
-	core/dns.o \
-	core/ip.o \
-	core/pbuf.o \
-	core/raw.o \
-	core/tcp.o \
-	core/def.o \
-	core/netif.o \
-	core/stats.o \
-	core/timers.o \
-	core/inet_chksum.o \
-	core/udp.o \
-	core/tcp_out.o \
-	netif/slipif.o \
-	netif/etharp.o \
-	netif/ethernet.o \
-	netif/lowpan6.o \
-	netif/ethernetif.o \
-	port/freertos/sys_arch.o \
-	port/netif/wlanif.o \
-	port/netif/ethernetif.o \
-	port/vfs_lwip.o \
+	apps/dhcpserver/dhcpserver.o \
+	lwip/src/api/netbuf.o \
+	lwip/src/api/api_lib.o \
+	lwip/src/api/netifapi.o \
+	lwip/src/api/tcpip.o \
+	lwip/src/api/netdb.o \
+	lwip/src/api/err.o \
+	lwip/src/api/api_msg.o \
+	lwip/src/api/sockets.o \
+	lwip/src/apps/sntp/sntp.o \
+	lwip/src/core/ipv4/etharp.o \
+	lwip/src/core/ipv4/dhcp.o \
+	lwip/src/core/ipv4/ip4_addr.o \
+	lwip/src/core/ipv4/igmp.o \
+	lwip/src/core/ipv4/ip4.o \
+	lwip/src/core/ipv4/autoip.o \
+	lwip/src/core/ipv4/icmp.o \
+	lwip/src/core/ipv6/ip6_frag.o \
+	lwip/src/core/ipv6/dhcp6.o \
+	lwip/src/core/ipv6/inet6.o \
+	lwip/src/core/ipv6/ip6_addr.o \
+	lwip/src/core/ipv6/ip6.o \
+	lwip/src/core/ipv6/nd6.o \
+	lwip/src/core/ipv6/mld6.o \
+	lwip/src/core/ipv6/ethip6.o \
+	lwip/src/core/ipv6/icmp6.o \
+	lwip/src/core/mem.o \
+	lwip/src/core/init.o \
+	lwip/src/core/memp.o \
+	lwip/src/core/sys.o \
+	lwip/src/core/tcp_in.o \
+	lwip/src/core/dns.o \
+	lwip/src/core/ip.o \
+	lwip/src/core/pbuf.o \
+	lwip/src/core/raw.o \
+	lwip/src/core/tcp.o \
+	lwip/src/core/def.o \
+	lwip/src/core/netif.o \
+	lwip/src/core/stats.o \
+	lwip/src/core/timeouts.o \
+	lwip/src/core/inet_chksum.o \
+	lwip/src/core/udp.o \
+	lwip/src/core/tcp_out.o \
+	lwip/src/netif/slipif.o \
+	lwip/src/netif/ethernet.o \
+	lwip/src/netif/lowpan6.o \
+	lwip/src/netif/ethernetif.o \
+	lwip/src/netif/ppp/pppapi.o \
+	port/esp32/freertos/sys_arch.o \
+	port/esp32/netif/wlanif.o \
+	port/esp32/netif/ethernetif.o \
+	port/esp32/vfs_lwip.o \
 	)
 
 ESPIDF_MBEDTLS_O = $(addprefix $(ESPCOMP)/mbedtls/,\
