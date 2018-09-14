@@ -64,10 +64,6 @@ typedef enum {
     MP_SOFT_RESET
 } reset_reason_t;
 
-#define DIG_DBIAS_2M        RTC_CNTL_DBIAS_1V00
-#define DIG_DBIAS_XTAL      RTC_CNTL_DBIAS_1V10
-#define MHZ 1000000
-
 STATIC mp_obj_t machine_freq(size_t n_args, const mp_obj_t *args) {
     rtc_cpu_freq_config_t config;
     if (n_args == 0) {
@@ -77,10 +73,23 @@ STATIC mp_obj_t machine_freq(size_t n_args, const mp_obj_t *args) {
     } else {
         // set
         int freq_mhz = mp_obj_get_int(args[0]);
-        if (rtc_clk_cpu_freq_mhz_to_config(freq_mhz, &config)) {
+        if (rtc_clk_cpu_freq_mhz_to_config(freq_mhz, &config) &&
+            (config.source != RTC_CPU_FREQ_SRC_XTAL || (int)rtc_clk_xtal_freq_get() % config.freq_mhz == 0)) {
+
             // temporary work around for IDF bug (https://github.com/espressif/esp-idf/pull/2404)
             if (config.freq_mhz == 2) {
                 config.div = rtc_clk_xtal_freq_get() / 2;
+            }
+
+            // temporary work around for IDF bug (https://github.com/espressif/esp-idf/pull/2405)
+            #include "soc/rtc.h"
+            rtc_cpu_freq_config_t cur_config;
+            rtc_clk_cpu_freq_get_config(&cur_config);
+            if (cur_config.source == RTC_CPU_FREQ_SRC_XTAL && 
+                freq_mhz == 40 &&
+                cur_config.freq_mhz / cur_config.div < 40) {
+                rtc_clk_cpu_freq_to_config(RTC_CPU_FREQ_80M, &cur_config);
+                rtc_clk_cpu_freq_set_config_fast(&cur_config);
             }
 
             // ESP_LOGI("cpu", "source: %u  div: %u", config.source, config.div);
