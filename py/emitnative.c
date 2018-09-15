@@ -75,7 +75,8 @@
 #define NLR_BUF_IDX_RET_VAL (1)
 
 // Whether the native/viper function needs to be wrapped in an exception handler
-#define NEED_GLOBAL_EXC_HANDLER(emit) ((emit)->scope->exc_stack_size > 0)
+#define NEED_GLOBAL_EXC_HANDLER(emit) ((emit)->scope->exc_stack_size > 0 \
+    || (!(emit)->do_viper_types && ((emit)->scope->scope_flags & MP_SCOPE_FLAG_REFGLOBALS)))
 
 // Whether registers can be used to store locals (only true if there are no
 // exception handlers, because otherwise an nlr_jump will restore registers to
@@ -127,6 +128,20 @@ typedef enum {
     VTYPE_BUILTIN_CAST = 0x70 | MP_NATIVE_TYPE_OBJ,
 } vtype_kind_t;
 
+int mp_native_type_from_qstr(qstr qst) {
+    switch (qst) {
+        case MP_QSTR_object: return MP_NATIVE_TYPE_OBJ;
+        case MP_QSTR_bool: return MP_NATIVE_TYPE_BOOL;
+        case MP_QSTR_int: return MP_NATIVE_TYPE_INT;
+        case MP_QSTR_uint: return MP_NATIVE_TYPE_UINT;
+        case MP_QSTR_ptr: return MP_NATIVE_TYPE_PTR;
+        case MP_QSTR_ptr8: return MP_NATIVE_TYPE_PTR8;
+        case MP_QSTR_ptr16: return MP_NATIVE_TYPE_PTR16;
+        case MP_QSTR_ptr32: return MP_NATIVE_TYPE_PTR32;
+        default: return -1;
+    }
+}
+
 STATIC qstr vtype_to_qstr(vtype_kind_t vtype) {
     switch (vtype) {
         case VTYPE_PYOBJ: return MP_QSTR_object;
@@ -167,8 +182,6 @@ struct _emit_t {
     int pass;
 
     bool do_viper_types;
-
-    vtype_kind_t return_vtype;
 
     mp_uint_t local_vtype_alloc;
     vtype_kind_t *local_vtype;
@@ -222,36 +235,6 @@ void EXPORT_FUN(free)(emit_t *emit) {
     m_del_obj(emit_t, emit);
 }
 
-STATIC void emit_native_set_native_type(emit_t *emit, mp_uint_t op, mp_uint_t arg1, qstr arg2) {
-    switch (op) {
-        case MP_EMIT_NATIVE_TYPE_ENABLE:
-            emit->do_viper_types = arg1;
-            break;
-
-        default: {
-            vtype_kind_t type;
-            switch (arg2) {
-                case MP_QSTR_object: type = VTYPE_PYOBJ; break;
-                case MP_QSTR_bool: type = VTYPE_BOOL; break;
-                case MP_QSTR_int: type = VTYPE_INT; break;
-                case MP_QSTR_uint: type = VTYPE_UINT; break;
-                case MP_QSTR_ptr: type = VTYPE_PTR; break;
-                case MP_QSTR_ptr8: type = VTYPE_PTR8; break;
-                case MP_QSTR_ptr16: type = VTYPE_PTR16; break;
-                case MP_QSTR_ptr32: type = VTYPE_PTR32; break;
-                default: EMIT_NATIVE_VIPER_TYPE_ERROR(emit, "unknown type '%q'", arg2); return;
-            }
-            if (op == MP_EMIT_NATIVE_TYPE_RETURN) {
-                emit->return_vtype = type;
-            } else {
-                assert(arg1 < emit->local_vtype_alloc);
-                emit->local_vtype[arg1] = type;
-            }
-            break;
-        }
-    }
-}
-
 STATIC void emit_pre_pop_reg(emit_t *emit, vtype_kind_t *vtype, int reg_dest);
 STATIC void emit_post_push_reg(emit_t *emit, vtype_kind_t vtype, int reg);
 STATIC void emit_native_load_fast(emit_t *emit, qstr qst, mp_uint_t local_num);
@@ -261,6 +244,7 @@ STATIC void emit_native_start_pass(emit_t *emit, pass_kind_t pass, scope_t *scop
     DEBUG_printf("start_pass(pass=%u, scope=%p)\n", pass, scope);
 
     emit->pass = pass;
+    emit->do_viper_types = scope->emit_options == MP_EMIT_OPT_VIPER;
     emit->stack_start = 0;
     emit->stack_size = 0;
     emit->last_emit_was_return_value = false;
@@ -272,9 +256,6 @@ STATIC void emit_native_start_pass(emit_t *emit, pass_kind_t pass, scope_t *scop
         emit->local_vtype_alloc = scope->num_locals;
     }
 
-    // set default type for return
-    emit->return_vtype = VTYPE_PYOBJ;
-
     // set default type for arguments
     mp_uint_t num_args = emit->scope->num_pos_args + emit->scope->num_kwonly_args;
     if (scope->scope_flags & MP_SCOPE_FLAG_VARARGS) {
@@ -285,6 +266,17 @@ STATIC void emit_native_start_pass(emit_t *emit, pass_kind_t pass, scope_t *scop
     }
     for (mp_uint_t i = 0; i < num_args; i++) {
         emit->local_vtype[i] = VTYPE_PYOBJ;
+    }
+
+    // Set viper type for arguments
+    if (emit->do_viper_types) {
+        for (int i = 0; i < emit->scope->id_info_len; ++i) {
+            id_info_t *id = &emit->scope->id_info[i];
+            if (id->flags & ID_FLAG_IS_PARAM) {
+                assert(id->local_num < emit->local_vtype_alloc);
+                emit->local_vtype[id->local_num] = id->flags >> ID_FLAG_VIPER_TYPE_POS;
+            }
+        }
     }
 
     // local variables begin unbound, and have unknown type
@@ -487,7 +479,7 @@ STATIC void emit_native_end_pass(emit_t *emit) {
 
         // compute type signature
         // note that the lower 4 bits of a vtype are tho correct MP_NATIVE_TYPE_xxx
-        mp_uint_t type_sig = emit->return_vtype & 0xf;
+        mp_uint_t type_sig = emit->scope->scope_flags >> MP_SCOPE_FLAG_VIPERRET_POS;
         for (mp_uint_t i = 0; i < emit->scope->num_pos_args; i++) {
             type_sig |= (emit->local_vtype[i] & 0xf) << (i * 4 + 4);
         }
@@ -928,30 +920,56 @@ STATIC void emit_native_global_exc_entry(emit_t *emit) {
         mp_uint_t start_label = *emit->label_slot + 2;
         mp_uint_t global_except_label = *emit->label_slot + 3;
 
-        // Clear the unwind state
-        ASM_XOR_REG_REG(emit->as, REG_TEMP0, REG_TEMP0);
-        ASM_MOV_LOCAL_REG(emit->as, LOCAL_IDX_EXC_HANDLER_UNWIND(emit), REG_TEMP0);
+        if (!emit->do_viper_types) {
+            // Set new globals
+            ASM_MOV_REG_LOCAL(emit->as, REG_ARG_1, offsetof(mp_code_state_t, fun_bc) / sizeof(uintptr_t));
+            ASM_LOAD_REG_REG_OFFSET(emit->as, REG_ARG_1, REG_ARG_1, offsetof(mp_obj_fun_bc_t, globals) / sizeof(uintptr_t));
+            emit_call(emit, MP_F_NATIVE_SWAP_GLOBALS);
 
-        // Put PC of start code block into REG_LOCAL_1
-        ASM_MOV_REG_PCREL(emit->as, REG_LOCAL_1, start_label);
+            // Save old globals (or NULL if globals didn't change)
+            ASM_MOV_LOCAL_REG(emit->as, offsetof(mp_code_state_t, old_globals) / sizeof(uintptr_t), REG_RET);
+        }
 
-        // Wrap everything in an nlr context
-        emit_native_label_assign(emit, nlr_label);
-        ASM_MOV_REG_LOCAL(emit->as, REG_LOCAL_2, LOCAL_IDX_EXC_HANDLER_UNWIND(emit));
-        emit_get_stack_pointer_to_reg_for_push(emit, REG_ARG_1, sizeof(nlr_buf_t) / sizeof(uintptr_t));
-        emit_call(emit, MP_F_NLR_PUSH);
-        ASM_MOV_LOCAL_REG(emit->as, LOCAL_IDX_EXC_HANDLER_UNWIND(emit), REG_LOCAL_2);
-        ASM_JUMP_IF_REG_NONZERO(emit->as, REG_RET, global_except_label, true);
+        if (emit->scope->exc_stack_size == 0) {
+            // Optimisation: if globals didn't change don't push the nlr context
+            ASM_JUMP_IF_REG_ZERO(emit->as, REG_RET, start_label, false);
 
-        // Clear PC of current code block, and jump there to resume execution
-        ASM_XOR_REG_REG(emit->as, REG_TEMP0, REG_TEMP0);
-        ASM_MOV_LOCAL_REG(emit->as, LOCAL_IDX_EXC_HANDLER_PC(emit), REG_TEMP0);
-        ASM_JUMP_REG(emit->as, REG_LOCAL_1);
+            // Wrap everything in an nlr context
+            emit_get_stack_pointer_to_reg_for_push(emit, REG_ARG_1, sizeof(nlr_buf_t) / sizeof(uintptr_t));
+            emit_call(emit, MP_F_NLR_PUSH);
+            ASM_JUMP_IF_REG_ZERO(emit->as, REG_RET, start_label, true);
+        } else {
+            // Clear the unwind state
+            ASM_XOR_REG_REG(emit->as, REG_TEMP0, REG_TEMP0);
+            ASM_MOV_LOCAL_REG(emit->as, LOCAL_IDX_EXC_HANDLER_UNWIND(emit), REG_TEMP0);
 
-        // Global exception handler: check for valid exception handler
-        emit_native_label_assign(emit, global_except_label);
-        ASM_MOV_REG_LOCAL(emit->as, REG_LOCAL_1, LOCAL_IDX_EXC_HANDLER_PC(emit));
-        ASM_JUMP_IF_REG_NONZERO(emit->as, REG_LOCAL_1, nlr_label, false);
+            // Put PC of start code block into REG_LOCAL_1
+            ASM_MOV_REG_PCREL(emit->as, REG_LOCAL_1, start_label);
+
+            // Wrap everything in an nlr context
+            emit_native_label_assign(emit, nlr_label);
+            ASM_MOV_REG_LOCAL(emit->as, REG_LOCAL_2, LOCAL_IDX_EXC_HANDLER_UNWIND(emit));
+            emit_get_stack_pointer_to_reg_for_push(emit, REG_ARG_1, sizeof(nlr_buf_t) / sizeof(uintptr_t));
+            emit_call(emit, MP_F_NLR_PUSH);
+            ASM_MOV_LOCAL_REG(emit->as, LOCAL_IDX_EXC_HANDLER_UNWIND(emit), REG_LOCAL_2);
+            ASM_JUMP_IF_REG_NONZERO(emit->as, REG_RET, global_except_label, true);
+
+            // Clear PC of current code block, and jump there to resume execution
+            ASM_XOR_REG_REG(emit->as, REG_TEMP0, REG_TEMP0);
+            ASM_MOV_LOCAL_REG(emit->as, LOCAL_IDX_EXC_HANDLER_PC(emit), REG_TEMP0);
+            ASM_JUMP_REG(emit->as, REG_LOCAL_1);
+
+            // Global exception handler: check for valid exception handler
+            emit_native_label_assign(emit, global_except_label);
+            ASM_MOV_REG_LOCAL(emit->as, REG_LOCAL_1, LOCAL_IDX_EXC_HANDLER_PC(emit));
+            ASM_JUMP_IF_REG_NONZERO(emit->as, REG_LOCAL_1, nlr_label, false);
+        }
+
+        if (!emit->do_viper_types) {
+            // Restore old globals
+            ASM_MOV_REG_LOCAL(emit->as, REG_ARG_1, offsetof(mp_code_state_t, old_globals) / sizeof(uintptr_t));
+            emit_call(emit, MP_F_NATIVE_SWAP_GLOBALS);
+        }
 
         // Re-raise exception out to caller
         ASM_MOV_REG_LOCAL(emit->as, REG_ARG_1, LOCAL_IDX_EXC_VAL(emit));
@@ -967,9 +985,27 @@ STATIC void emit_native_global_exc_exit(emit_t *emit) {
     emit_native_label_assign(emit, emit->exit_label);
 
     if (NEED_GLOBAL_EXC_HANDLER(emit)) {
+        if (!emit->do_viper_types) {
+            // Get old globals
+            ASM_MOV_REG_LOCAL(emit->as, REG_ARG_1, offsetof(mp_code_state_t, old_globals) / sizeof(uintptr_t));
+
+            if (emit->scope->exc_stack_size == 0) {
+                // Optimisation: if globals didn't change then don't restore them and don't do nlr_pop
+                ASM_JUMP_IF_REG_ZERO(emit->as, REG_ARG_1, emit->exit_label + 1, false);
+            }
+
+            // Restore old globals
+            emit_call(emit, MP_F_NATIVE_SWAP_GLOBALS);
+        }
+
         // Pop the nlr context
         emit_call(emit, MP_F_NLR_POP);
         adjust_stack(emit, -(mp_int_t)(sizeof(nlr_buf_t) / sizeof(uintptr_t)));
+
+        if (emit->scope->exc_stack_size == 0) {
+            // Destination label for above optimisation
+            emit_native_label_assign(emit, emit->exit_label + 1);
+        }
 
         // Load return value
         ASM_MOV_REG_LOCAL(emit->as, REG_RET, LOCAL_IDX_RET_VAL(emit));
@@ -1153,23 +1189,9 @@ STATIC void emit_native_load_global(emit_t *emit, qstr qst, int kind) {
         DEBUG_printf("load_global(%s)\n", qstr_str(qst));
         if (emit->do_viper_types) {
             // check for builtin casting operators
-            if (qst == MP_QSTR_int) {
-                emit_post_push_imm(emit, VTYPE_BUILTIN_CAST, VTYPE_INT);
-                return;
-            } else if (qst == MP_QSTR_uint) {
-                emit_post_push_imm(emit, VTYPE_BUILTIN_CAST, VTYPE_UINT);
-                return;
-            } else if (qst == MP_QSTR_ptr) {
-                emit_post_push_imm(emit, VTYPE_BUILTIN_CAST, VTYPE_PTR);
-                return;
-            } else if (qst == MP_QSTR_ptr8) {
-                emit_post_push_imm(emit, VTYPE_BUILTIN_CAST, VTYPE_PTR8);
-                return;
-            } else if (qst == MP_QSTR_ptr16) {
-                emit_post_push_imm(emit, VTYPE_BUILTIN_CAST, VTYPE_PTR16);
-                return;
-            } else if (qst == MP_QSTR_ptr32) {
-                emit_post_push_imm(emit, VTYPE_BUILTIN_CAST, VTYPE_PTR32);
+            int native_type = mp_native_type_from_qstr(qst);
+            if (native_type >= MP_NATIVE_TYPE_INT) {
+                emit_post_push_imm(emit, VTYPE_BUILTIN_CAST, native_type);
                 return;
             }
         }
@@ -2381,9 +2403,10 @@ STATIC void emit_native_call_method(emit_t *emit, mp_uint_t n_positional, mp_uin
 STATIC void emit_native_return_value(emit_t *emit) {
     DEBUG_printf("return_value\n");
     if (emit->do_viper_types) {
+        vtype_kind_t return_vtype = emit->scope->scope_flags >> MP_SCOPE_FLAG_VIPERRET_POS;
         if (peek_vtype(emit, 0) == VTYPE_PTR_NONE) {
             emit_pre_pop_discard(emit);
-            if (emit->return_vtype == VTYPE_PYOBJ) {
+            if (return_vtype == VTYPE_PYOBJ) {
                 ASM_MOV_REG_IMM(emit->as, REG_RET, (mp_uint_t)mp_const_none);
             } else {
                 ASM_MOV_REG_IMM(emit->as, REG_RET, 0);
@@ -2391,10 +2414,10 @@ STATIC void emit_native_return_value(emit_t *emit) {
         } else {
             vtype_kind_t vtype;
             emit_pre_pop_reg(emit, &vtype, REG_RET);
-            if (vtype != emit->return_vtype) {
+            if (vtype != return_vtype) {
                 EMIT_NATIVE_VIPER_TYPE_ERROR(emit,
                     "return expected '%q' but got '%q'",
-                    vtype_to_qstr(emit->return_vtype), vtype_to_qstr(vtype));
+                    vtype_to_qstr(return_vtype), vtype_to_qstr(vtype));
             }
         }
     } else {
@@ -2442,7 +2465,6 @@ STATIC void emit_native_end_except_handler(emit_t *emit) {
 }
 
 const emit_method_table_t EXPORT_FUN(method_table) = {
-    emit_native_set_native_type,
     emit_native_start_pass,
     emit_native_end_pass,
     emit_native_last_emit_was_return_value,
