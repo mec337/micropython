@@ -1,10 +1,10 @@
 The MicroPython Edge Fork
 =======================
-This fork is created for [The MicroPython Project](https://github.com/micropython/micropython) has always been reluctant to introduce vendor specific features due to corcerns such as consistency across platforms.
+This fork is created for the reason that [The MicroPython Project](https://github.com/micropython/micropython) has always been reluctant to introduce new features due to corcerns about consistency across platforms.
 
-For those who do not share their concerns and want to **SQUEEZE OUT EVERY LAST BIT OF JUICE** from your microcontroller, you are welcome to try out this fork!
+For those who do not share the same concern and want to **SQUEEZE OUT EVERY LAST BIT OF JUICE** from your microcontroller, you are welcome to try out this fork!
 
-This experimental version of MicroPython aims at bringing the newest and most wholesome vendor speicific APIs to your device while mantaining basic(common module level) compatibility with the official MicroPython.
+This experimental version of MicroPython aims at bringing the newest and most wholesome vendor-speicific features to your device while mantaining basic(common module level) compatibility with the official MicroPython.
 
 
 Building
@@ -14,7 +14,7 @@ Please refer to the standard [MicroPython document](README_mp.md)
 
 Features
 -----------------
-### ESP32: More Options in CPU Frequency Setting
+##### ESP32: More Options in CPU Frequency Setting
 ```py
 import machine
 machine.freq(1) # set CPU frequency to 1MHz
@@ -22,13 +22,13 @@ machine.freq(1) # set CPU frequency to 1MHz
 * Available frequencies: 1MHz, 2MHz, 4MHz , 8MHz, 10MHz, 20MHz, 40MHz, 80MHz, 160MHz, 240MHz.
 * WIFI relies on 40MHz XTAL clock. When setting frequency<=40MHz, XTAL clock will supply CPU frequency, wifi will therefore be unuseable.
 
-### ESP32: Power Management(WIP)
+##### ESP32: Power Management(WIP)
 ```py
 import esp32
 esp32.wifi_power_save(esp32.WIFI_PS_MAX_MODEM) # set wifi power save mode to maximum
 ```
 
-### ESP32: Support for GPIO Pin Hold/Drive 
+##### ESP32: Support for GPIO Pin Hold/Drive 
 ```py
 import machine
 p=machine.Pin(10)
@@ -38,7 +38,7 @@ p.init(drive=p.DRIVE_CAP_STRONGEST, hold=True)
 * Pin drive sets the output current limit of current pin. (Strongest ≈ 80mA) [ref1](https://twitter.com/eMbeddedHome/status/868787870743629825)
 * For additional details, please refer to [vendor docs](https://docs.espressif.com/projects/esp-idf/en/latest/api-reference/peripherals/gpio.html#_CPPv212gpio_hold_en10gpio_num_t).
 
-### ESP8266/ESP32: Support for ESP-Now
+##### ESP8266/ESP32: Support for ESP-Now
 To get a overview of the ESP-Now protocol, checkout the [official user guide](https://www.espressif.com/sites/default/files/documentation/esp-now_user_guide_en.pdf) first.
 
 Miminal Example:
@@ -79,7 +79,7 @@ Some bugs and caveats you might have encounter when using ESP-Now: ()
 * There is no get lmk from peer because of bugs in the SDK.
 
 
-### ESP32: Support For More Sleep Options
+##### ESP32: Support For More Sleep Options
 Light Sleep: [ref](https://docs.espressif.com/projects/esp-idf/en/latest/api-reference/system/sleep_modes.html#entering-light-sleep)
 ```py
 import machine
@@ -98,4 +98,3 @@ esp32.lightsleep_wake_on_uart(True) # wake up when input data is available on ua
 
 * ULP wakeup source can not be used when RTC_PERIPH power domain is forced to be powered on (ESP_PD_OPTION_ON) or when ext0 wakeup source is used. [ref](https://docs.espressif.com/projects/esp-idf/en/latest/api-reference/system/sleep_modes.html#_CPPv227esp_sleep_enable_ulp_wakeupv)
 * ULP coprocessor can not be disabled for wake_on_ulp() to work.
-
