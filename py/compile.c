@@ -2737,6 +2737,25 @@ STATIC void compile_node(compiler_t *comp, mp_parse_node_t pn) {
     }
 }
 
+#if MICROPY_EMIT_NATIVE
+STATIC int compile_viper_type_annotation(compiler_t *comp, mp_parse_node_t pn_annotation) {
+    int native_type = MP_NATIVE_TYPE_OBJ;
+    if (MP_PARSE_NODE_IS_NULL(pn_annotation)) {
+        // No annotation, type defaults to object
+    } else if (MP_PARSE_NODE_IS_ID(pn_annotation)) {
+        qstr type_name = MP_PARSE_NODE_LEAF_ARG(pn_annotation);
+        native_type = mp_native_type_from_qstr(type_name);
+        if (native_type < 0) {
+            comp->compile_error = mp_obj_new_exception_msg_varg(&mp_type_ViperTypeError, "unknown type '%q'", type_name);
+            native_type = 0;
+        }
+    } else {
+        compile_syntax_error(comp, pn_annotation, "annotation must be an identifier");
+    }
+    return native_type;
+}
+#endif
+
 STATIC void compile_scope_func_lambda_param(compiler_t *comp, mp_parse_node_t pn, pn_kind_t pn_name, pn_kind_t pn_star, pn_kind_t pn_dbl_star) {
     // check that **kw is last
     if ((comp->scope_cur->scope_flags & MP_SCOPE_FLAG_VARKEYWORDS) != 0) {
@@ -2746,6 +2765,7 @@ STATIC void compile_scope_func_lambda_param(compiler_t *comp, mp_parse_node_t pn
 
     qstr param_name = MP_QSTR_NULL;
     uint param_flag = ID_FLAG_IS_PARAM;
+    mp_parse_node_struct_t *pns = NULL;
     if (MP_PARSE_NODE_IS_ID(pn)) {
         param_name = MP_PARSE_NODE_LEAF_ARG(pn);
         if (comp->have_star) {
@@ -2757,8 +2777,9 @@ STATIC void compile_scope_func_lambda_param(compiler_t *comp, mp_parse_node_t pn
         }
     } else {
         assert(MP_PARSE_NODE_IS_STRUCT(pn));
-        mp_parse_node_struct_t *pns = (mp_parse_node_struct_t*)pn;
+        pns = (mp_parse_node_struct_t*)pn;
         if (MP_PARSE_NODE_STRUCT_KIND(pns) == pn_name) {
+            // named parameter with possible annotation
             param_name = MP_PARSE_NODE_LEAF_ARG(pns->nodes[0]);
             if (comp->have_star) {
                 // comes after a star, so counts as a keyword-only parameter
@@ -2779,10 +2800,12 @@ STATIC void compile_scope_func_lambda_param(compiler_t *comp, mp_parse_node_t pn
                 // bare star
                 // TODO see http://www.python.org/dev/peps/pep-3102/
                 //assert(comp->scope_cur->num_dict_params == 0);
+                pns = NULL;
             } else if (MP_PARSE_NODE_IS_ID(pns->nodes[0])) {
                 // named star
                 comp->scope_cur->scope_flags |= MP_SCOPE_FLAG_VARARGS;
                 param_name = MP_PARSE_NODE_LEAF_ARG(pns->nodes[0]);
+                pns = NULL;
             } else {
                 assert(MP_PARSE_NODE_IS_STRUCT_KIND(pns->nodes[0], PN_tfpdef)); // should be
                 // named star with possible annotation
@@ -2791,6 +2814,7 @@ STATIC void compile_scope_func_lambda_param(compiler_t *comp, mp_parse_node_t pn
                 param_name = MP_PARSE_NODE_LEAF_ARG(pns->nodes[0]);
             }
         } else {
+            // double star with possible annotation
             assert(MP_PARSE_NODE_STRUCT_KIND(pns) == pn_dbl_star); // should be
             param_name = MP_PARSE_NODE_LEAF_ARG(pns->nodes[0]);
             param_flag = ID_FLAG_IS_PARAM | ID_FLAG_IS_DBL_STAR_PARAM;
@@ -2807,6 +2831,14 @@ STATIC void compile_scope_func_lambda_param(compiler_t *comp, mp_parse_node_t pn
         }
         id_info->kind = ID_INFO_KIND_LOCAL;
         id_info->flags = param_flag;
+
+        #if MICROPY_EMIT_NATIVE
+        if (comp->scope_cur->emit_options == MP_EMIT_OPT_VIPER && pn_name == PN_typedargslist_name && pns != NULL) {
+            id_info->flags |= compile_viper_type_annotation(comp, pns->nodes[1]) << ID_FLAG_VIPER_TYPE_POS;
+        }
+        #else
+        (void)pns;
+        #endif
     }
 }
 
@@ -2817,49 +2849,6 @@ STATIC void compile_scope_func_param(compiler_t *comp, mp_parse_node_t pn) {
 STATIC void compile_scope_lambda_param(compiler_t *comp, mp_parse_node_t pn) {
     compile_scope_func_lambda_param(comp, pn, PN_varargslist_name, PN_varargslist_star, PN_varargslist_dbl_star);
 }
-
-#if MICROPY_EMIT_NATIVE
-STATIC void compile_scope_func_annotations(compiler_t *comp, mp_parse_node_t pn) {
-    if (!MP_PARSE_NODE_IS_STRUCT(pn)) {
-        // no annotation
-        return;
-    }
-
-    mp_parse_node_struct_t *pns = (mp_parse_node_struct_t*)pn;
-    if (MP_PARSE_NODE_STRUCT_KIND(pns) == PN_typedargslist_name) {
-        // named parameter with possible annotation
-        // fallthrough
-    } else if (MP_PARSE_NODE_STRUCT_KIND(pns) == PN_typedargslist_star) {
-        if (MP_PARSE_NODE_IS_STRUCT_KIND(pns->nodes[0], PN_tfpdef)) {
-            // named star with possible annotation
-            pns = (mp_parse_node_struct_t*)pns->nodes[0];
-            // fallthrough
-        } else {
-            // no annotation
-            return;
-        }
-    } else {
-        assert(MP_PARSE_NODE_STRUCT_KIND(pns) == PN_typedargslist_dbl_star);
-        // double star with possible annotation
-        // fallthrough
-    }
-
-    mp_parse_node_t pn_annotation = pns->nodes[1];
-
-    if (!MP_PARSE_NODE_IS_NULL(pn_annotation)) {
-        qstr param_name = MP_PARSE_NODE_LEAF_ARG(pns->nodes[0]);
-        id_info_t *id_info = scope_find(comp->scope_cur, param_name);
-        assert(id_info != NULL);
-
-        if (MP_PARSE_NODE_IS_ID(pn_annotation)) {
-            qstr arg_type = MP_PARSE_NODE_LEAF_ARG(pn_annotation);
-            EMIT_ARG(set_native_type, MP_EMIT_NATIVE_TYPE_ARG, id_info->local_num, arg_type);
-        } else {
-            compile_syntax_error(comp, pn_annotation, "parameter annotation must be an identifier");
-        }
-    }
-}
-#endif // MICROPY_EMIT_NATIVE
 
 STATIC void compile_scope_comp_iter(compiler_t *comp, mp_parse_node_struct_t *pns_comp_for, mp_parse_node_t pn_inner_expr, int for_depth) {
     uint l_top = comp_next_label(comp);
@@ -2981,28 +2970,14 @@ STATIC void compile_scope(compiler_t *comp, scope_t *scope, pass_kind_t pass) {
         if (comp->pass == MP_PASS_SCOPE) {
             comp->have_star = false;
             apply_to_single_or_list(comp, pns->nodes[1], PN_typedargslist, compile_scope_func_param);
-        }
-        #if MICROPY_EMIT_NATIVE
-        else if (scope->emit_options == MP_EMIT_OPT_VIPER) {
-            // compile annotations; only needed on latter compiler passes
-            // only needed for viper emitter
 
-            // argument annotations
-            apply_to_single_or_list(comp, pns->nodes[1], PN_typedargslist, compile_scope_func_annotations);
-
-            // pns->nodes[2] is return/whole function annotation
-            mp_parse_node_t pn_annotation = pns->nodes[2];
-            if (!MP_PARSE_NODE_IS_NULL(pn_annotation)) {
-                // nodes[2] can be null or a test-expr
-                if (MP_PARSE_NODE_IS_ID(pn_annotation)) {
-                    qstr ret_type = MP_PARSE_NODE_LEAF_ARG(pn_annotation);
-                    EMIT_ARG(set_native_type, MP_EMIT_NATIVE_TYPE_RETURN, 0, ret_type);
-                } else {
-                    compile_syntax_error(comp, pn_annotation, "return annotation must be an identifier");
-                }
+            #if MICROPY_EMIT_NATIVE
+            if (scope->emit_options == MP_EMIT_OPT_VIPER) {
+                // Compile return type; pns->nodes[2] is return/whole function annotation
+                scope->scope_flags |= compile_viper_type_annotation(comp, pns->nodes[2]) << MP_SCOPE_FLAG_VIPERRET_POS;
             }
+            #endif // MICROPY_EMIT_NATIVE
         }
-        #endif // MICROPY_EMIT_NATIVE
 
         compile_node(comp, pns->nodes[3]); // 3 is function body
         // emit return if it wasn't the last opcode
@@ -3456,7 +3431,6 @@ mp_raw_code_t *mp_compile_to_raw_code(mp_parse_tree_t *parse_tree, qstr source_f
                     }
                     comp->emit_method_table = &NATIVE_EMITTER(method_table);
                     comp->emit = emit_native;
-                    EMIT_ARG(set_native_type, MP_EMIT_NATIVE_TYPE_ENABLE, s->emit_options == MP_EMIT_OPT_VIPER, 0);
                     break;
 #endif // MICROPY_EMIT_NATIVE
 
