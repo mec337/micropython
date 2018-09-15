@@ -23,4 +23,6 @@ extern const mp_obj_type_t machine_rtc_type;
 void machine_pins_init(void);
 void machine_pins_deinit(void);
 
+gpio_num_t machine_pin_get_id(mp_obj_t pin_in);
+
 #endif // MICROPY_INCLUDED_ESP32_MODMACHINE_H

@@ -27,5 +27,6 @@
 #define RTC_IS_VALID_EXT_PIN(pin_id) ((1ll << (pin_id)) & RTC_VALID_EXT_PINS)
 
 extern const mp_obj_type_t esp32_ulp_type;
+extern const mp_obj_type_t esp32_rtcio_type;
 
 #endif // MICROPY_INCLUDED_ESP32_MODESP32_H

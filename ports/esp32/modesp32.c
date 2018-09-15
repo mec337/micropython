@@ -204,6 +204,8 @@ STATIC mp_obj_t esp32_wifi_power_save_mode(size_t n_args, const mp_obj_t *args) 
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(esp32_wifi_power_save_mode_obj, 0, 1, esp32_wifi_power_save_mode);
 
+extern const mp_obj_module_t mp_module_rtcio;
+
 STATIC const mp_rom_map_elem_t esp32_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_esp32) },
 
@@ -220,6 +222,7 @@ STATIC const mp_rom_map_elem_t esp32_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_wifi_power_save), MP_ROM_PTR(&esp32_wifi_power_save_mode_obj) },
 
     { MP_ROM_QSTR(MP_QSTR_ULP), MP_ROM_PTR(&esp32_ulp_type) },
+    { MP_ROM_QSTR(MP_QSTR_RTCPin), MP_ROM_PTR(&esp32_rtcio_type) },
 
     { MP_ROM_QSTR(MP_QSTR_WAKEUP_ALL_LOW), MP_ROM_PTR(&mp_const_false_obj) },
     { MP_ROM_QSTR(MP_QSTR_WAKEUP_ANY_HIGH), MP_ROM_PTR(&mp_const_true_obj) },

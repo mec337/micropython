@@ -176,6 +176,7 @@ SRC_C = \
 	modesp.c \
 	esp_espnow.c \
 	esp32_ulp.c \
+	esp32_rtcio.c \
 	modesp32.c \
 	espneopixel.c \
 	machine_hw_spi.c \
