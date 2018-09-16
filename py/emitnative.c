@@ -66,7 +66,8 @@
 //                          locals (reversed, L0 at end)    |
 //
 // C stack layout for viper functions:
-//  0 = emit->stack_start:  nlr_buf_t [optional]            |
+//  0                       fun_obj, old_globals [optional]
+//  emit->stack_start:      nlr_buf_t [optional]            |
 //                          Python object stack             | emit->n_state
 //                          locals (reversed, L0 at end)    |
 //                          (L0-L2 may be in regs instead)
@@ -76,7 +77,7 @@
 
 // Whether the native/viper function needs to be wrapped in an exception handler
 #define NEED_GLOBAL_EXC_HANDLER(emit) ((emit)->scope->exc_stack_size > 0 \
-    || (!(emit)->do_viper_types && ((emit)->scope->scope_flags & MP_SCOPE_FLAG_REFGLOBALS)))
+    || ((emit)->scope->scope_flags & MP_SCOPE_FLAG_REFGLOBALS))
 
 // Whether registers can be used to store locals (only true if there are no
 // exception handlers, because otherwise an nlr_jump will restore registers to
@@ -84,6 +85,8 @@
 #define CAN_USE_REGS_FOR_LOCALS(emit) ((emit)->scope->exc_stack_size == 0)
 
 // Indices within the local C stack for various variables
+#define LOCAL_IDX_FUN_OBJ(emit) (offsetof(mp_code_state_t, fun_bc) / sizeof(uintptr_t))
+#define LOCAL_IDX_OLD_GLOBALS(emit) (offsetof(mp_code_state_t, ip) / sizeof(uintptr_t))
 #define LOCAL_IDX_EXC_VAL(emit) ((emit)->stack_start + NLR_BUF_IDX_RET_VAL)
 #define LOCAL_IDX_EXC_HANDLER_PC(emit) ((emit)->stack_start + NLR_BUF_IDX_LOCAL_1)
 #define LOCAL_IDX_EXC_HANDLER_UNWIND(emit) ((emit)->stack_start + NLR_BUF_IDX_LOCAL_2)
@@ -207,7 +210,6 @@ struct _emit_t {
     ASM_T *as;
 };
 
-STATIC const uint8_t reg_arg_table[REG_ARG_NUM] = {REG_ARG_1, REG_ARG_2, REG_ARG_3, REG_ARG_4};
 STATIC const uint8_t reg_local_table[REG_LOCAL_NUM] = {REG_LOCAL_1, REG_LOCAL_2, REG_LOCAL_3};
 
 STATIC void emit_native_global_exc_entry(emit_t *emit);
@@ -237,6 +239,7 @@ void EXPORT_FUN(free)(emit_t *emit) {
 
 STATIC void emit_pre_pop_reg(emit_t *emit, vtype_kind_t *vtype, int reg_dest);
 STATIC void emit_post_push_reg(emit_t *emit, vtype_kind_t vtype, int reg);
+STATIC void emit_call_with_imm_arg(emit_t *emit, mp_fun_kind_t fun_kind, mp_int_t arg_val, int arg_reg);
 STATIC void emit_native_load_fast(emit_t *emit, qstr qst, mp_uint_t local_num);
 STATIC void emit_native_store_fast(emit_t *emit, qstr qst, mp_uint_t local_num);
 
@@ -295,13 +298,6 @@ STATIC void emit_native_start_pass(emit_t *emit, pass_kind_t pass, scope_t *scop
     // generate code for entry to function
 
     if (emit->do_viper_types) {
-
-        // right now we have a restriction of maximum of 4 arguments
-        if (scope->num_pos_args > REG_ARG_NUM) {
-            EMIT_NATIVE_VIPER_TYPE_ERROR(emit, "Viper functions don't currently support more than 4 arguments");
-            return;
-        }
-
         // Work out size of state (locals plus stack)
         // n_state counts all stack and locals, even those in registers
         emit->n_state = scope->num_locals + scope->stack_size;
@@ -311,10 +307,19 @@ STATIC void emit_native_start_pass(emit_t *emit, pass_kind_t pass, scope_t *scop
             if (num_locals_in_regs > REG_LOCAL_NUM) {
                 num_locals_in_regs = REG_LOCAL_NUM;
             }
+            // Need a spot for REG_LOCAL_3 if 4 or more args (see below)
+            if (scope->num_pos_args >= 4) {
+                --num_locals_in_regs;
+            }
         }
 
-        // The locals and stack start at the beginning of the C stack
-        emit->stack_start = 0;
+        // Work out where the locals and Python stack start within the C stack
+        if (NEED_GLOBAL_EXC_HANDLER(emit)) {
+            // Reserve 2 words for function object and old globals
+            emit->stack_start = 2;
+        } else {
+            emit->stack_start = 0;
+        }
 
         // Entry to function
         ASM_ENTRY(emit->as, emit->stack_start + emit->n_state - num_locals_in_regs);
@@ -324,28 +329,57 @@ STATIC void emit_native_start_pass(emit_t *emit, pass_kind_t pass, scope_t *scop
         asm_thumb_mov_reg_i32(emit->as, ASM_THUMB_REG_R7, (mp_uint_t)mp_fun_table);
         #elif N_ARM
         asm_arm_mov_reg_i32(emit->as, ASM_ARM_REG_R7, (mp_uint_t)mp_fun_table);
+        #elif N_XTENSA
+        ASM_MOV_REG_IMM(emit->as, ASM_XTENSA_REG_A15, (uint32_t)mp_fun_table);
         #endif
 
-        // Store arguments into locals
+        // Store function object (passed as first arg) to stack if needed
+        if (NEED_GLOBAL_EXC_HANDLER(emit)) {
+            #if N_X86
+            asm_x86_mov_arg_to_r32(emit->as, 0, REG_ARG_1);
+            #endif
+            ASM_MOV_LOCAL_REG(emit->as, LOCAL_IDX_FUN_OBJ(emit), REG_ARG_1);
+        }
+
+        // Put n_args in REG_ARG_1, n_kw in REG_ARG_2, args array in REG_LOCAL_3
         #if N_X86
-        for (int i = 0; i < scope->num_pos_args; i++) {
-            if (i < REG_LOCAL_NUM && CAN_USE_REGS_FOR_LOCALS(emit)) {
-                asm_x86_mov_arg_to_r32(emit->as, i, reg_local_table[i]);
-            } else {
-                asm_x86_mov_arg_to_r32(emit->as, i, REG_TEMP0);
-                asm_x86_mov_r32_to_local(emit->as, REG_TEMP0, LOCAL_IDX_LOCAL_VAR(emit, i));
-            }
-        }
+        asm_x86_mov_arg_to_r32(emit->as, 1, REG_ARG_1);
+        asm_x86_mov_arg_to_r32(emit->as, 2, REG_ARG_2);
+        asm_x86_mov_arg_to_r32(emit->as, 3, REG_LOCAL_3);
         #else
-        for (int i = 0; i < scope->num_pos_args; i++) {
-            if (i < REG_LOCAL_NUM && CAN_USE_REGS_FOR_LOCALS(emit)) {
-                ASM_MOV_REG_REG(emit->as, reg_local_table[i], reg_arg_table[i]);
+        ASM_MOV_REG_REG(emit->as, REG_ARG_1, REG_ARG_2);
+        ASM_MOV_REG_REG(emit->as, REG_ARG_2, REG_ARG_3);
+        ASM_MOV_REG_REG(emit->as, REG_LOCAL_3, REG_ARG_4);
+        #endif
+
+        // Check number of args matches this function, and call mp_arg_check_num_sig if not
+        ASM_JUMP_IF_REG_NONZERO(emit->as, REG_ARG_2, *emit->label_slot + 4, true);
+        ASM_MOV_REG_IMM(emit->as, REG_ARG_3, scope->num_pos_args);
+        ASM_JUMP_IF_REG_EQ(emit->as, REG_ARG_1, REG_ARG_3, *emit->label_slot + 5);
+        mp_asm_base_label_assign(&emit->as->base, *emit->label_slot + 4);
+        ASM_MOV_REG_IMM(emit->as, REG_ARG_3, MP_OBJ_FUN_MAKE_SIG(scope->num_pos_args, scope->num_pos_args, false));
+        ASM_CALL_IND(emit->as, mp_fun_table[MP_F_ARG_CHECK_NUM_SIG], MP_F_ARG_CHECK_NUM_SIG);
+        mp_asm_base_label_assign(&emit->as->base, *emit->label_slot + 5);
+
+        // Store arguments into locals (reg or stack), converting to native if needed
+        for (int i = 0; i < emit->scope->num_pos_args; i++) {
+            int r = REG_ARG_1;
+            ASM_LOAD_REG_REG_OFFSET(emit->as, REG_ARG_1, REG_LOCAL_3, i);
+            if (emit->local_vtype[i] != VTYPE_PYOBJ) {
+                emit_call_with_imm_arg(emit, MP_F_CONVERT_OBJ_TO_NATIVE, emit->local_vtype[i], REG_ARG_2);
+                r = REG_RET;
+            }
+            // REG_LOCAL_3 points to the args array so be sure not to overwrite it if it's still needed
+            if (i < REG_LOCAL_NUM && CAN_USE_REGS_FOR_LOCALS(emit) && (i != 2 || emit->scope->num_pos_args == 3)) {
+                ASM_MOV_REG_REG(emit->as, reg_local_table[i], r);
             } else {
-                assert(i < REG_ARG_NUM); // should be true; max args is checked above
-                ASM_MOV_LOCAL_REG(emit->as, LOCAL_IDX_LOCAL_VAR(emit, i), reg_arg_table[i]);
+                ASM_MOV_LOCAL_REG(emit->as, LOCAL_IDX_LOCAL_VAR(emit, i), r);
             }
         }
-        #endif
+        // Get 3rd local from the stack back into REG_LOCAL_3 if this reg couldn't be written to above
+        if (emit->scope->num_pos_args >= 4 && CAN_USE_REGS_FOR_LOCALS(emit)) {
+            ASM_MOV_REG_LOCAL(emit->as, REG_LOCAL_3, LOCAL_IDX_LOCAL_VAR(emit, 2));
+        }
 
         emit_native_global_exc_entry(emit);
 
@@ -364,6 +398,8 @@ STATIC void emit_native_start_pass(emit_t *emit, pass_kind_t pass, scope_t *scop
         asm_thumb_mov_reg_i32(emit->as, ASM_THUMB_REG_R7, (mp_uint_t)mp_fun_table);
         #elif N_ARM
         asm_arm_mov_reg_i32(emit->as, ASM_ARM_REG_R7, (mp_uint_t)mp_fun_table);
+        #elif N_XTENSA
+        ASM_MOV_REG_IMM(emit->as, ASM_XTENSA_REG_A15, (uint32_t)mp_fun_table);
         #endif
 
         // prepare incoming arguments for call to mp_setup_code_state
@@ -376,7 +412,7 @@ STATIC void emit_native_start_pass(emit_t *emit, pass_kind_t pass, scope_t *scop
         #endif
 
         // set code_state.fun_bc
-        ASM_MOV_LOCAL_REG(emit->as, offsetof(mp_code_state_t, fun_bc) / sizeof(uintptr_t), REG_ARG_1);
+        ASM_MOV_LOCAL_REG(emit->as, LOCAL_IDX_FUN_OBJ(emit), REG_ARG_1);
 
         // set code_state.ip (offset from start of this function to prelude info)
         // XXX this encoding may change size
@@ -477,17 +513,10 @@ STATIC void emit_native_end_pass(emit_t *emit) {
         void *f = mp_asm_base_get_code(&emit->as->base);
         mp_uint_t f_len = mp_asm_base_get_code_size(&emit->as->base);
 
-        // compute type signature
-        // note that the lower 4 bits of a vtype are tho correct MP_NATIVE_TYPE_xxx
-        mp_uint_t type_sig = emit->scope->scope_flags >> MP_SCOPE_FLAG_VIPERRET_POS;
-        for (mp_uint_t i = 0; i < emit->scope->num_pos_args; i++) {
-            type_sig |= (emit->local_vtype[i] & 0xf) << (i * 4 + 4);
-        }
-
         mp_emit_glue_assign_native(emit->scope->raw_code,
             emit->do_viper_types ? MP_CODE_NATIVE_VIPER : MP_CODE_NATIVE_PY,
             f, f_len, (mp_uint_t*)((byte*)f + emit->const_table_offset),
-            emit->scope->num_pos_args, emit->scope->scope_flags, type_sig);
+            emit->scope->num_pos_args, emit->scope->scope_flags, 0);
     }
 }
 
@@ -920,15 +949,13 @@ STATIC void emit_native_global_exc_entry(emit_t *emit) {
         mp_uint_t start_label = *emit->label_slot + 2;
         mp_uint_t global_except_label = *emit->label_slot + 3;
 
-        if (!emit->do_viper_types) {
-            // Set new globals
-            ASM_MOV_REG_LOCAL(emit->as, REG_ARG_1, offsetof(mp_code_state_t, fun_bc) / sizeof(uintptr_t));
-            ASM_LOAD_REG_REG_OFFSET(emit->as, REG_ARG_1, REG_ARG_1, offsetof(mp_obj_fun_bc_t, globals) / sizeof(uintptr_t));
-            emit_call(emit, MP_F_NATIVE_SWAP_GLOBALS);
+        // Set new globals
+        ASM_MOV_REG_LOCAL(emit->as, REG_ARG_1, LOCAL_IDX_FUN_OBJ(emit));
+        ASM_LOAD_REG_REG_OFFSET(emit->as, REG_ARG_1, REG_ARG_1, offsetof(mp_obj_fun_bc_t, globals) / sizeof(uintptr_t));
+        emit_call(emit, MP_F_NATIVE_SWAP_GLOBALS);
 
-            // Save old globals (or NULL if globals didn't change)
-            ASM_MOV_LOCAL_REG(emit->as, offsetof(mp_code_state_t, old_globals) / sizeof(uintptr_t), REG_RET);
-        }
+        // Save old globals (or NULL if globals didn't change)
+        ASM_MOV_LOCAL_REG(emit->as, LOCAL_IDX_OLD_GLOBALS(emit), REG_RET);
 
         if (emit->scope->exc_stack_size == 0) {
             // Optimisation: if globals didn't change don't push the nlr context
@@ -965,11 +992,9 @@ STATIC void emit_native_global_exc_entry(emit_t *emit) {
             ASM_JUMP_IF_REG_NONZERO(emit->as, REG_LOCAL_1, nlr_label, false);
         }
 
-        if (!emit->do_viper_types) {
-            // Restore old globals
-            ASM_MOV_REG_LOCAL(emit->as, REG_ARG_1, offsetof(mp_code_state_t, old_globals) / sizeof(uintptr_t));
-            emit_call(emit, MP_F_NATIVE_SWAP_GLOBALS);
-        }
+        // Restore old globals
+        ASM_MOV_REG_LOCAL(emit->as, REG_ARG_1, LOCAL_IDX_OLD_GLOBALS(emit));
+        emit_call(emit, MP_F_NATIVE_SWAP_GLOBALS);
 
         // Re-raise exception out to caller
         ASM_MOV_REG_LOCAL(emit->as, REG_ARG_1, LOCAL_IDX_EXC_VAL(emit));
@@ -985,18 +1010,16 @@ STATIC void emit_native_global_exc_exit(emit_t *emit) {
     emit_native_label_assign(emit, emit->exit_label);
 
     if (NEED_GLOBAL_EXC_HANDLER(emit)) {
-        if (!emit->do_viper_types) {
-            // Get old globals
-            ASM_MOV_REG_LOCAL(emit->as, REG_ARG_1, offsetof(mp_code_state_t, old_globals) / sizeof(uintptr_t));
+        // Get old globals
+        ASM_MOV_REG_LOCAL(emit->as, REG_ARG_1, LOCAL_IDX_OLD_GLOBALS(emit));
 
-            if (emit->scope->exc_stack_size == 0) {
-                // Optimisation: if globals didn't change then don't restore them and don't do nlr_pop
-                ASM_JUMP_IF_REG_ZERO(emit->as, REG_ARG_1, emit->exit_label + 1, false);
-            }
-
-            // Restore old globals
-            emit_call(emit, MP_F_NATIVE_SWAP_GLOBALS);
+        if (emit->scope->exc_stack_size == 0) {
+            // Optimisation: if globals didn't change then don't restore them and don't do nlr_pop
+            ASM_JUMP_IF_REG_ZERO(emit->as, REG_ARG_1, emit->exit_label + 1, false);
         }
+
+        // Restore old globals
+        emit_call(emit, MP_F_NATIVE_SWAP_GLOBALS);
 
         // Pop the nlr context
         emit_call(emit, MP_F_NLR_POP);
@@ -2409,16 +2432,19 @@ STATIC void emit_native_return_value(emit_t *emit) {
             if (return_vtype == VTYPE_PYOBJ) {
                 ASM_MOV_REG_IMM(emit->as, REG_RET, (mp_uint_t)mp_const_none);
             } else {
-                ASM_MOV_REG_IMM(emit->as, REG_RET, 0);
+                ASM_MOV_REG_IMM(emit->as, REG_ARG_1, 0);
             }
         } else {
             vtype_kind_t vtype;
-            emit_pre_pop_reg(emit, &vtype, REG_RET);
+            emit_pre_pop_reg(emit, &vtype, return_vtype == VTYPE_PYOBJ ? REG_RET : REG_ARG_1);
             if (vtype != return_vtype) {
                 EMIT_NATIVE_VIPER_TYPE_ERROR(emit,
                     "return expected '%q' but got '%q'",
                     vtype_to_qstr(return_vtype), vtype_to_qstr(vtype));
             }
+        }
+        if (return_vtype != VTYPE_PYOBJ) {
+            emit_call_with_imm_arg(emit, MP_F_CONVERT_NATIVE_TO_OBJ, return_vtype, REG_ARG_2);
         }
     } else {
         vtype_kind_t vtype;
