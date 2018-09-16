@@ -3,7 +3,7 @@
  *
  * The MIT License (MIT)
  *
- * Copyright (c) 2017 Nick Moore
+ * Copyright (c) 2018 shawwwn <shawwwn1@gmail.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -277,6 +277,7 @@ STATIC const mp_map_elem_t rtcio_locals_dict_table[] = {
     { MP_ROM_QSTR(MP_QSTR_pin_num), (mp_obj_t)&rtcio_pin_num_obj },
     { MP_ROM_QSTR(MP_QSTR_active), (mp_obj_t)&rtcio_active_obj },
     { MP_ROM_QSTR(MP_QSTR_value), (mp_obj_t)&rtcio_value_obj },
+    { MP_ROM_QSTR(MP_QSTR_hold), (mp_obj_t)&rtcio_hold_obj },
     { MP_ROM_QSTR(MP_QSTR_drive), (mp_obj_t)&rtcio_drive_obj },
     { MP_ROM_QSTR(MP_QSTR_direction), (mp_obj_t)&rtcio_direction_obj },
     { MP_ROM_QSTR(MP_QSTR_wake_by), (mp_obj_t)&rtcio_wake_by_obj },

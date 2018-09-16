@@ -28,5 +28,6 @@
 
 extern const mp_obj_type_t esp32_ulp_type;
 extern const mp_obj_type_t esp32_rtcio_type;
+extern const mp_obj_type_t uart0_type;
 
 #endif // MICROPY_INCLUDED_ESP32_MODESP32_H
