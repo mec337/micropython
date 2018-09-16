@@ -67,6 +67,7 @@ int mp_uos_dupterm_rx_chr(void) {
             if (out_sz == 0) {
                 nlr_pop();
                 mp_uos_deactivate(idx, "dupterm: EOF received, deactivating\n", MP_OBJ_NULL);
+                return -3;
             } else if (out_sz == MP_STREAM_ERROR) {
                 // errcode is valid
                 if (mp_is_nonblocking_error(errcode)) {
@@ -86,6 +87,7 @@ int mp_uos_dupterm_rx_chr(void) {
             }
         } else {
             mp_uos_deactivate(idx, "dupterm: Exception in read() method, deactivating: ", MP_OBJ_FROM_PTR(nlr.ret_val));
+            return -4;
         }
     }
 

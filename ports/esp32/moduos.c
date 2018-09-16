@@ -90,7 +90,7 @@ STATIC mp_obj_t os_dupterm_notify(mp_obj_t obj_in) {
     for (;;) {
         int c = mp_uos_dupterm_rx_chr();
         if (c < 0) {
-            break;
+            return mp_obj_new_int(c); // return actual error num instead of none
         }
         ringbuf_put(&stdin_ringbuf, c);
     }
