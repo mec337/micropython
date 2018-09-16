@@ -2938,7 +2938,7 @@ STATIC void compile_scope(compiler_t *comp, scope_t *scope, pass_kind_t pass) {
     comp->scope_cur = scope;
     comp->next_label = 0;
     EMIT_ARG(start_pass, pass, scope);
-    reserve_labels_for_native(comp, 4); // used by native's start_pass
+    reserve_labels_for_native(comp, 6); // used by native's start_pass
 
     if (comp->pass == MP_PASS_SCOPE) {
         // reset maximum stack sizes in scope
@@ -3287,7 +3287,12 @@ STATIC void scope_compute_things(scope_t *scope) {
         #if MICROPY_EMIT_NATIVE
         if (id->kind == ID_INFO_KIND_GLOBAL_EXPLICIT) {
             // This function makes a reference to a global variable
-            scope->scope_flags |= MP_SCOPE_FLAG_REFGLOBALS;
+            if (scope->emit_options == MP_EMIT_OPT_VIPER
+                && mp_native_type_from_qstr(id->qst) >= MP_NATIVE_TYPE_INT) {
+                // A casting operator in viper mode, not a real global reference
+            } else {
+                scope->scope_flags |= MP_SCOPE_FLAG_REFGLOBALS;
+            }
         }
         #endif
         // params always count for 1 local, even if they are a cell
