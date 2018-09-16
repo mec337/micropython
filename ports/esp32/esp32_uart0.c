@@ -56,7 +56,6 @@ const mp_obj_type_t uart0_type;
 STATIC const uart0_obj_t esp32_ulp_obj = {{&uart0_type}}; // singleton
 
 STATIC mp_obj_t uart0_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, const mp_obj_t *args) {
-    mp_arg_check_num(n_args, n_kw, 0, 0, false);
     return (mp_obj_t)&esp32_ulp_obj;
 }
 
@@ -64,28 +63,34 @@ STATIC void uart0_print(const mp_print_t *print, mp_obj_t self_in, mp_print_kind
     mp_printf(print, "UART0");
 }
 
-STATIC mp_obj_t uart0_any(void) {
+STATIC mp_obj_t uart0_any(mp_obj_t self_in) {
     if (stdin_ringbuf.iget != stdin_ringbuf.iput) {
         return mp_const_true;
     }
     return mp_const_false;
 }
-STATIC MP_DEFINE_CONST_FUN_OBJ_0(uart0_any_obj, uart0_any);
+STATIC MP_DEFINE_CONST_FUN_OBJ_1(uart0_any_obj, uart0_any);
 
-// TODO: read multiple chars, num_in
-STATIC mp_obj_t uart0_read(mp_obj_t num_in) {
+// TODO: read multiple chars
+STATIC mp_obj_t uart0_read(size_t n_args, const mp_obj_t *args) {
     int c = ringbuf_get(&stdin_ringbuf);
     if (c != -1) {
         return mp_obj_new_str((const char *)&c, 1);
     }
     return mp_const_none;
 }
-STATIC MP_DEFINE_CONST_FUN_OBJ_1(uart0_read_obj, uart0_read);
+MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(uart0_read_obj, 1, 2, uart0_read);
+
+STATIC mp_obj_t uart0_init(size_t n_args, const mp_obj_t *args, mp_map_t *kw_args) {
+    return mp_const_none;
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_KW(uart0_init_obj, 1, uart0_init);
 
 STATIC const mp_rom_map_elem_t uart0_globals_dict_table[] = {
     { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_UART0) },
     { MP_ROM_QSTR(MP_QSTR_any), MP_ROM_PTR(&uart0_any_obj) },
     { MP_ROM_QSTR(MP_QSTR_read), MP_ROM_PTR(&uart0_read_obj) },
+    { MP_ROM_QSTR(MP_QSTR_init), MP_ROM_PTR(&uart0_init_obj) },
 };
 STATIC MP_DEFINE_CONST_DICT(uart0_globals_dict, uart0_globals_dict_table);
 
