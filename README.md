@@ -28,15 +28,16 @@ import esp32
 esp32.wifi_power_save(esp32.WIFI_PS_MAX_MODEM) # set wifi power save mode to maximum
 ```
 
-##### ESP32: Support for GPIO Pin Hold/Drive 
+##### ESP32: Support for GPIO Pin Hold/Drive/Lightsleep Wakeup
 ```py
 import machine
 p=machine.Pin(10)
-p.init(drive=p.DRIVE_CAP_STRONGEST, hold=True)
+p.init(drive=p.DRIVE_CAP_STRONGEST, hold=True, ls_wake=p.WAKE_HIGH)
 ```
 * Setting Pin hold will also enable RTCIO Pin hold(if current pin is initialized as a RTCIO pin).
 * Pin drive sets the output current limit of current pin. (Strongest ≈ 80mA) [ref1](https://twitter.com/eMbeddedHome/status/868787870743629825)
 * For additional details, please refer to [vendor docs](https://docs.espressif.com/projects/esp-idf/en/latest/api-reference/peripherals/gpio.html#_CPPv212gpio_hold_en10gpio_num_t).
+* Setting ```ls_wake``` only enables current pin to wake up in lightsleep. To enable global gpio wakeup, you need to sequently call ```esp32.lightsleep_wake_on_gpio()```
 
 ##### ESP8266/ESP32: Support for ESP-Now
 To get a overview of the ESP-Now protocol, checkout the [official user guide](https://www.espressif.com/sites/default/files/documentation/esp-now_user_guide_en.pdf) first.
@@ -92,7 +93,7 @@ import esp32
 esp32.sleep_pd_config(esp32.PD_DOMAIN_RTC_PERIPH, esp32.ESP_PD_OPTION_AUTO)
 esp32.wake_on_ulp(True) # enable ULP coprocessor to wake up the device
 
-esp32.lightsleep_wake_on_gpio(True) # wake on gpio, pin(s) are set using machine.Pin.init()
+esp32.lightsleep_wake_on_gpio(True) # wake on gpio, pin(s) are set using machine.Pin.init(ls_wake=True)
 esp32.lightsleep_wake_on_uart(True) # wake up when input data is available on uart
 ```
 

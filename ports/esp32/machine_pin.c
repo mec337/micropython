@@ -137,7 +137,7 @@ STATIC void machine_pin_print(const mp_print_t *print, mp_obj_t self_in, mp_prin
 
 // pin.init(mode, pull=None, *, value)
 STATIC mp_obj_t machine_pin_obj_init_helper(const machine_pin_obj_t *self, size_t n_args, const mp_obj_t *pos_args, mp_map_t *kw_args) {
-    enum { ARG_mode, ARG_pull, ARG_value, ARG_drive, ARG_alt, ARG_hold };
+    enum { ARG_mode, ARG_pull, ARG_value, ARG_drive, ARG_alt, ARG_hold, ARG_ls_wake };
     static const mp_arg_t allowed_args[] = {
         { MP_QSTR_mode, MP_ARG_OBJ, {.u_obj = mp_const_none}},
         { MP_QSTR_pull, MP_ARG_OBJ, {.u_obj = mp_const_none}},
@@ -145,6 +145,7 @@ STATIC mp_obj_t machine_pin_obj_init_helper(const machine_pin_obj_t *self, size_
         { MP_QSTR_drive, MP_ARG_OBJ, {.u_obj = mp_const_none}},
         { MP_QSTR_alt, MP_ARG_OBJ, {.u_obj = mp_const_none}},
         { MP_QSTR_hold, MP_ARG_OBJ, {.u_obj = mp_const_none}},
+        { MP_QSTR_ls_wake, MP_ARG_OBJ, {.u_obj = mp_const_none}},
     };
 
     // parse args
@@ -194,6 +195,16 @@ STATIC mp_obj_t machine_pin_obj_init_helper(const machine_pin_obj_t *self, size_
         }
         if (e != ESP_OK) {
             mp_raise_ValueError("pin does not support hold");
+        }
+    }
+
+    // configure wake_lightsleep
+    if (args[ARG_ls_wake].u_obj != mp_const_none) {
+        int wake_type = mp_obj_get_int(args[ARG_ls_wake].u_obj);
+        if (wake_type != GPIO_PIN_INTR_DISABLE) {
+            gpio_wakeup_enable(self->id, wake_type);
+        } else {
+            gpio_wakeup_disable(self->id);
         }
     }
 
@@ -332,6 +343,7 @@ STATIC const mp_rom_map_elem_t machine_pin_locals_dict_table[] = {
     { MP_ROM_QSTR(MP_QSTR_IRQ_FALLING), MP_ROM_INT(GPIO_PIN_INTR_NEGEDGE) },
     { MP_ROM_QSTR(MP_QSTR_WAKE_LOW), MP_ROM_INT(GPIO_PIN_INTR_LOLEVEL) },
     { MP_ROM_QSTR(MP_QSTR_WAKE_HIGH), MP_ROM_INT(GPIO_PIN_INTR_HILEVEL) },
+    { MP_ROM_QSTR(MP_QSTR_WAKE_DISABLE), MP_ROM_INT(GPIO_PIN_INTR_DISABLE) },
     { MP_ROM_QSTR(MP_QSTR_DRIVE_CAP_WEAK), MP_ROM_INT(GPIO_DRIVE_CAP_0) },
     { MP_ROM_QSTR(MP_QSTR_DRIVE_CAP_STRONGER), MP_ROM_INT(GPIO_DRIVE_CAP_1) },
     { MP_ROM_QSTR(MP_QSTR_DRIVE_CAP_DEFAULT), MP_ROM_INT(GPIO_DRIVE_CAP_2) },
