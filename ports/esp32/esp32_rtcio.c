@@ -31,6 +31,7 @@
 
 #include "driver/gpio.h"
 #include "driver/rtc_io.h"
+#include "soc/rtc_periph.h"
 
 #include "py/runtime.h"
 #include "modmachine.h"
@@ -147,8 +148,9 @@ STATIC mp_obj_t rtcio_hold(size_t n_args, const mp_obj_t *args) {
     
     if (n_args == 1) {
         // get
-        // TODO: get register value
-        return mp_const_none;
+        return (GET_PERI_REG_MASK(rtc_gpio_desc[gpio_id].reg, rtc_gpio_desc[gpio_id].hold) == 0) ? 
+                mp_const_false : 
+                mp_const_true;
     } else {
         // set
         if (mp_obj_is_true(args[1])) {
@@ -219,9 +221,9 @@ STATIC mp_obj_t rtcio_pullup(size_t n_args, const mp_obj_t *args) {
 
     if (n_args == 1) {
         // get
-        // TODO: add get()
-        mp_raise_ValueError("get not yet supported");
-        return mp_const_none;
+        return (GET_PERI_REG_MASK(rtc_gpio_desc[gpio_id].reg, rtc_gpio_desc[gpio_id].pullup) == 0) ?
+                mp_const_false : 
+                mp_const_true;
     } else {
         // set
         bool enable = mp_obj_is_true(args[1]);
@@ -241,9 +243,9 @@ STATIC mp_obj_t rtcio_pulldown(size_t n_args, const mp_obj_t *args) {
 
     if (n_args == 1) {
         // get
-        // TODO: add get()
-        mp_raise_ValueError("get not yet supported");
-        return mp_const_none;
+        return (SET_PERI_REG_MASK(rtc_gpio_desc[gpio_id].reg, rtc_gpio_desc[gpio_id].pulldown) == 0) ?
+                mp_const_false : 
+                mp_const_true;
     } else {
         // set
         bool enable = mp_obj_is_true(args[1]);
