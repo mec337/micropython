@@ -47,3 +47,6 @@ genrst/
 ######################
 .vscode
 *.code-workspace
+
+# frozen codes
+**/modules
