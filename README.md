@@ -72,9 +72,9 @@ espnow.send(PEER_MAC2, 'hello unencrypted peer')
 espnow.send(None, "hello all peers")
 ```
 
-Since ESP-Now library is distributed in binary by Espressif, there isn't much I can do to fix issues/bugs reside with the library ... and there are a lot of them.
+Since ESP-Now library is distributed in binary by Espressif, there isn't much a developer can do to fix issues/bugs within the library. Although I tried implementing serveral workarounds for the existing library bugs, there are still a lot of them.
 
-Some bugs and caveats you might have encounter when using ESP-Now: ()
+Some bugs you might have encounter when using ESP-Now:
 * Upon changing the primary key(pmk), all local peers' local keys(lmk) have to be re-applied. Otherwise the system will continue to use the old encryption setup by the previous pmk.
 * Device who add peer with lmk can still receive unencrypted message from the added peer
 * There is no get lmk from peer because of bugs in the SDK.
@@ -99,3 +99,47 @@ esp32.lightsleep_wake_on_uart(True) # wake up when input data is available on ua
 
 * ULP wakeup source can not be used when RTC_PERIPH power domain is forced to be powered on (ESP_PD_OPTION_ON) or when ext0 wakeup source is used. [ref](https://docs.espressif.com/projects/esp-idf/en/latest/api-reference/system/sleep_modes.html#_CPPv227esp_sleep_enable_ulp_wakeupv)
 * ULP coprocessor can not be disabled for wake_on_ulp() to work.
+
+##### ESP32: Support For RTCIO
+
+RTCIO, short for 'RTC GPIO', is a set of GPIO pins that are routed through the RTC subsystem. An IO MUX is imposed to determine whether these pins should be used as regular GPIO(controlled by the CPU) or RTCIO(controlled by the ULP coprocessor). Once initialized for RTCIO, a pin's state can be carried into deepsleep mode and subsequently be controlled by the ULP coprocessor. Espressif's SDK has included a set of API for CPU-side RTCIO manipulation. This fork aims at exposing these APIs to users.
+
+Added Module:
+```py
+esp32.RTCPin
+```
+
+GPIO and RTCIO use difference pin numbering scheme. Although this module use GPIO numbering for RTCIO, you might want to still check [ESP32 Pin List](http://wiki.ai-thinker.com/_media/esp32/docs/esp32_chip_pin_list_en.pdf).
+
+We will use an example to better describe the functionaliy of this module:
+```py
+from machine import Pin # GPIO module
+from esp32 import RTCPin # RTCIO module
+
+pin = Pin(12) # GPIO 12
+rtc_pin = RTCPin(pin) # RTC
+print(rtc_pin.pin_num()) # will print (12, 15) as GPIO12 = RTCIO15
+RTCPin.force_hold_dis_all() # disable hold for all RTCIO pins
+rtc_pin.active(True) # init pin for RTCIO, note that you can not change this pin using the GPIO module from this call
+rtc_pin.direction(rtc_pin.OUT) # pin for OUTPUT
+rtc_pin.pullup(True) # configure pullup resistor for the pin
+rtc_pin.value(1)
+print(rtc_pin.value()) # will print '1'
+rtc_pin.wake_by(rtc_pin.GPIO_INTR_LOW_LEVEL) # enable wake up on low voltage level(value=0) in lightsleep mode
+rtc_pin.hold(True) # holds rtc_pin value/direction, even in deepsleep mode
+
+import machine
+machine.deepsleep(1000) # deepsleep for 1 second
+
+###
+### ... wake up from deepsleep
+###
+
+from machine import Pin # GPIO module
+from esp32 import RTCPin # RTCIO module
+pin = Pin(12) # GPIO 12
+rtc_pin = RTCPin(pin) # RTC
+print(rtc_pin.value()) # will print 1
+rtc_pin.hold(False) # in order to change rtc_pin's value & direction, need to disable hold first
+rtc_pin.value(0) # now you can set pin to low
+```
