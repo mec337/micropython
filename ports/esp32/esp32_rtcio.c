@@ -197,7 +197,7 @@ STATIC mp_obj_t rtcio_direction(size_t n_args, const mp_obj_t *args) {
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(rtcio_direction_obj, 1, 2, rtcio_direction);
 
-STATIC mp_obj_t rtcio_wake_by(mp_obj_t self_in, mp_obj_t level_in) {
+STATIC mp_obj_t rtcio_ls_wake(mp_obj_t self_in, mp_obj_t level_in) {
     rtcio_obj_t *self = self_in;
     gpio_num_t gpio_id = self->gpio_id;
 
@@ -211,7 +211,7 @@ STATIC mp_obj_t rtcio_wake_by(mp_obj_t self_in, mp_obj_t level_in) {
     }
     return mp_const_none;
 }
-STATIC MP_DEFINE_CONST_FUN_OBJ_2(rtcio_wake_by_obj, rtcio_wake_by);
+STATIC MP_DEFINE_CONST_FUN_OBJ_2(rtcio_ls_wake_obj, rtcio_ls_wake);
 
 STATIC mp_obj_t rtcio_pullup(size_t n_args, const mp_obj_t *args) {
     rtcio_obj_t *self = args[0];
@@ -280,7 +280,7 @@ STATIC const mp_map_elem_t rtcio_locals_dict_table[] = {
     { MP_ROM_QSTR(MP_QSTR_hold), (mp_obj_t)&rtcio_hold_obj },
     { MP_ROM_QSTR(MP_QSTR_drive), (mp_obj_t)&rtcio_drive_obj },
     { MP_ROM_QSTR(MP_QSTR_direction), (mp_obj_t)&rtcio_direction_obj },
-    { MP_ROM_QSTR(MP_QSTR_wake_by), (mp_obj_t)&rtcio_wake_by_obj },
+    { MP_ROM_QSTR(MP_QSTR_ls_wake), (mp_obj_t)&rtcio_ls_wake_obj },
     { MP_ROM_QSTR(MP_QSTR_pullup), (mp_obj_t)&rtcio_pullup_obj },
     { MP_ROM_QSTR(MP_QSTR_pulldown), (mp_obj_t)&rtcio_pulldown_obj },
     { MP_ROM_QSTR(MP_QSTR_isolate), (mp_obj_t)&rtcio_isolate_obj },
