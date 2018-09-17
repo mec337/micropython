@@ -69,7 +69,7 @@ STATIC mp_obj_t machine_freq(size_t n_args, const mp_obj_t *args) {
     if (n_args == 0) {
         // get
         rtc_clk_cpu_freq_get_config(&config);
-        return mp_obj_new_int(config.freq_mhz);
+        return mp_obj_new_int(config.freq_mhz * 1000000);
     } else {
         // set
         int freq_mhz = mp_obj_get_int(args[0]);
