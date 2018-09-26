@@ -24,40 +24,25 @@
  * THE SOFTWARE.
  */
 
-#include "py/mpconfig.h"
+#include "libm.h"
 
-// All the qstr definitions in this file are available as constants.
-// That is, they are in ROM and you can reference them simply as MP_QSTR_xxxx.
+#ifndef NDEBUG
+typedef union {
+    double d;
+    struct {
+        uint64_t m : 52;
+        uint64_t e : 11;
+        uint64_t s : 1;
+    };
+} double_s_t;
 
-// qstr configuration passed to makeqstrdata.py of the form QCFG(key, value)
-QCFG(BYTES_IN_LEN, MICROPY_QSTR_BYTES_IN_LEN)
-QCFG(BYTES_IN_HASH, MICROPY_QSTR_BYTES_IN_HASH)
+double copysign(double x, double y) {
+    double_s_t dx={.d = x};
+    double_s_t dy={.d = y};
 
-Q()
-Q(*)
-Q(_)
-Q(/)
-#if MICROPY_PY_BUILTINS_STR_OP_MODULO
-Q(%#o)
-Q(%#x)
-#else
-Q({:#o})
-Q({:#x})
-#endif
-Q({:#b})
-Q( )
-Q(\n)
-Q(maximum recursion depth exceeded)
-Q(<module>)
-Q(<lambda>)
-Q(<listcomp>)
-Q(<dictcomp>)
-Q(<setcomp>)
-Q(<genexpr>)
-Q(<string>)
-Q(<stdin>)
-Q(utf-8)
+    // copy sign bit;
+    dx.s = dy.s;
 
-#if MICROPY_ENABLE_PYSTACK
-Q(pystack exhausted)
+    return dx.d;
+}
 #endif

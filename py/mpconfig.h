@@ -407,6 +407,12 @@
 #define MICROPY_OPT_MPZ_BITWISE (0)
 #endif
 
+
+// Whether math.factorial is large, fast and recursive (1) or small and slow (0).
+#ifndef MICROPY_OPT_MATH_FACTORIAL
+#define MICROPY_OPT_MATH_FACTORIAL (0)
+#endif
+
 /*****************************************************************************/
 /* Python internal features                                                  */
 
@@ -759,6 +765,11 @@ typedef double mp_float_t;
 #define MICROPY_PY_BUILTINS_STR_CENTER (0)
 #endif
 
+// Whether str % (...) formatting operator provided
+#ifndef MICROPY_PY_BUILTINS_STR_OP_MODULO
+#define MICROPY_PY_BUILTINS_STR_OP_MODULO (1)
+#endif
+
 // Whether str.partition()/str.rpartition() method provided
 #ifndef MICROPY_PY_BUILTINS_STR_PARTITION
 #define MICROPY_PY_BUILTINS_STR_PARTITION (0)
@@ -981,6 +992,11 @@ typedef double mp_float_t;
 // Whether to provide special math functions: math.{erf,erfc,gamma,lgamma}
 #ifndef MICROPY_PY_MATH_SPECIAL_FUNCTIONS
 #define MICROPY_PY_MATH_SPECIAL_FUNCTIONS (0)
+#endif
+
+// Whether to provide math.factorial function
+#ifndef MICROPY_PY_MATH_FACTORIAL
+#define MICROPY_PY_MATH_FACTORIAL (0)
 #endif
 
 // Whether to provide "cmath" module

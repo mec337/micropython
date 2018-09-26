@@ -3,7 +3,7 @@
  *
  * The MIT License (MIT)
  *
- * Copyright (c) 2013, 2014 Damien P. George
+ * Copyright (c) 2018 Damien P. George
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -23,41 +23,12 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+#ifndef MICROPY_INCLUDED_STM32_POWERCTRL_H
+#define MICROPY_INCLUDED_STM32_POWERCTRL_H
 
-#include "py/mpconfig.h"
+#include <stdint.h>
 
-// All the qstr definitions in this file are available as constants.
-// That is, they are in ROM and you can reference them simply as MP_QSTR_xxxx.
+int powerctrl_rcc_clock_config_pll(RCC_ClkInitTypeDef *rcc_init, uint32_t sysclk_mhz, bool need_pllsai);
+int powerctrl_set_sysclk(uint32_t sysclk, uint32_t ahb, uint32_t apb1, uint32_t apb2);
 
-// qstr configuration passed to makeqstrdata.py of the form QCFG(key, value)
-QCFG(BYTES_IN_LEN, MICROPY_QSTR_BYTES_IN_LEN)
-QCFG(BYTES_IN_HASH, MICROPY_QSTR_BYTES_IN_HASH)
-
-Q()
-Q(*)
-Q(_)
-Q(/)
-#if MICROPY_PY_BUILTINS_STR_OP_MODULO
-Q(%#o)
-Q(%#x)
-#else
-Q({:#o})
-Q({:#x})
-#endif
-Q({:#b})
-Q( )
-Q(\n)
-Q(maximum recursion depth exceeded)
-Q(<module>)
-Q(<lambda>)
-Q(<listcomp>)
-Q(<dictcomp>)
-Q(<setcomp>)
-Q(<genexpr>)
-Q(<string>)
-Q(<stdin>)
-Q(utf-8)
-
-#if MICROPY_ENABLE_PYSTACK
-Q(pystack exhausted)
-#endif
+#endif // MICROPY_INCLUDED_STM32_POWERCTRL_H
