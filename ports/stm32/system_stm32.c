@@ -88,6 +88,7 @@
   */
 
 #include "py/mphal.h"
+#include "powerctrl.h"
 
 void __fatal_error(const char *msg);
 
@@ -432,7 +433,6 @@ void SystemClock_Config(void)
     #if defined(STM32H7)
     RCC_ClkInitStruct.ClockType |= (RCC_CLOCKTYPE_D3PCLK1 | RCC_CLOCKTYPE_D1PCLK1);
     #endif
-    RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
 
 #if defined(MICROPY_HW_CLK_LAST_FREQ) && MICROPY_HW_CLK_LAST_FREQ
     #if defined(STM32F7)
@@ -513,28 +513,6 @@ void SystemClock_Config(void)
       __fatal_error("HAL_RCC_OscConfig");
     }
 
-    #if defined(STM32F7)
-    uint32_t vco_out = RCC_OscInitStruct.PLL.PLLN * (HSE_VALUE / 1000000) / RCC_OscInitStruct.PLL.PLLM;
-    bool need_pllsai = vco_out % 48 != 0;
-    if (need_pllsai) {
-        // Configure PLLSAI at 48MHz for those peripherals that need this freq
-        const uint32_t pllsain = 192;
-        const uint32_t pllsaip = 4;
-        const uint32_t pllsaiq = 2;
-        RCC->PLLSAICFGR = pllsaiq << RCC_PLLSAICFGR_PLLSAIQ_Pos
-            | (pllsaip / 2 - 1) << RCC_PLLSAICFGR_PLLSAIP_Pos
-            | pllsain << RCC_PLLSAICFGR_PLLSAIN_Pos;
-        RCC->CR |= RCC_CR_PLLSAION;
-        uint32_t ticks = mp_hal_ticks_ms();
-        while (!(RCC->CR & RCC_CR_PLLSAIRDY)) {
-            if (mp_hal_ticks_ms() - ticks > 200) {
-                __fatal_error("PLLSAIRDY timeout");
-            }
-        }
-        RCC->DCKCFGR2 |= RCC_DCKCFGR2_CK48MSEL;
-    }
-    #endif
-
 #if defined(STM32H7)
     /* PLL3 for USB Clock */
     PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_USB;
@@ -560,14 +538,12 @@ void SystemClock_Config(void)
   }
 #endif
 
-#if !defined(MICROPY_HW_FLASH_LATENCY)
-#define MICROPY_HW_FLASH_LATENCY FLASH_LATENCY_5
-#endif
-
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, MICROPY_HW_FLASH_LATENCY) != HAL_OK)
-  {
-    __fatal_error("HAL_RCC_ClockConfig");
-  }
+    uint32_t vco_out = RCC_OscInitStruct.PLL.PLLN * (HSE_VALUE / 1000000) / RCC_OscInitStruct.PLL.PLLM;
+    uint32_t sysclk_mhz = vco_out / RCC_OscInitStruct.PLL.PLLP;
+    bool need_pllsai = vco_out % 48 != 0;
+    if (powerctrl_rcc_clock_config_pll(&RCC_ClkInitStruct, sysclk_mhz, need_pllsai) != 0) {
+        __fatal_error("HAL_RCC_ClockConfig");
+    }
 
 #if defined(STM32H7)
   /* Activate CSI clock mandatory for I/O Compensation Cell*/

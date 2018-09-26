@@ -57,7 +57,7 @@ INC += -I$(USBDEV_DIR)/core/inc -I$(USBDEV_DIR)/class/inc
 CFLAGS_CORTEX_M = -mthumb
 
 # Select hardware floating-point support
-ifeq ($(CMSIS_MCU),$(filter $(CMSIS_MCU),STM32F767xx STM32F769xx STM32H743xx))
+ifeq ($(CMSIS_MCU),$(filter $(CMSIS_MCU),STM32F765xx STM32F767xx STM32F769xx STM32H743xx))
 CFLAGS_CORTEX_M += -mfpu=fpv5-d16 -mfloat-abi=hard
 else
 ifeq ($(MCU_SERIES),f0)
@@ -136,6 +136,7 @@ SRC_LIBM = $(addprefix lib/libm_dbl/,\
 	ceil.c \
 	cos.c \
 	cosh.c \
+	copysign.c \
 	erf.c \
 	exp.c \
 	expm1.c \
@@ -220,6 +221,7 @@ SRC_C = \
 	irq.c \
 	pendsv.c \
 	systick.c  \
+	powerctrl.c \
 	pybthread.c \
 	timer.c \
 	led.c \
@@ -319,6 +321,8 @@ endif
 ifeq ($(MCU_SERIES),$(filter $(MCU_SERIES),f4 f7 h7))
 SRC_HAL += $(addprefix $(HAL_DIR)/Src/stm32$(MCU_SERIES)xx_,\
 	hal_sdram.c \
+	hal_dma_ex.c \
+	hal_dcmi.c \
 	)
 endif
 
